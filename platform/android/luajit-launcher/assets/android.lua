@@ -2498,6 +2498,67 @@ local function run(android_app_state)
         end)
     end
 
+    android.openBluetoothSettings = function()
+        android.DEBUG("open android bluetooth settings")
+        JNI:context(android.app.activity.vm, function(jni)
+            jni:callVoidMethod(
+                android.app.activity.clazz,
+                "openBluetoothSettings",
+                "()V"
+            )
+        end)
+    end
+
+    android.bluetoothStartScan = function()
+        return JNI:context(android.app.activity.vm, function(jni)
+            return jni:callBooleanMethod(android.app.activity.clazz, "bluetoothStartScan", "()Z")
+        end)
+    end
+
+    android.bluetoothStopScan = function()
+        JNI:context(android.app.activity.vm, function(jni)
+            jni:callVoidMethod(android.app.activity.clazz, "bluetoothStopScan", "()V")
+        end)
+    end
+
+    android.bluetoothIsScanning = function()
+        return JNI:context(android.app.activity.vm, function(jni)
+            return jni:callBooleanMethod(android.app.activity.clazz, "bluetoothIsScanning", "()Z")
+        end)
+    end
+
+    --- Returns a list of { address, name, bonded, connected }.
+    android.bluetoothGetDevices = function()
+        local raw = JNI:context(android.app.activity.vm, function(jni)
+            local str = jni:callObjectMethod(android.app.activity.clazz, "bluetoothGetDevices", "()Ljava/lang/String;")
+            local text = jni:to_string(str)
+            jni.env[0].DeleteLocalRef(jni.env, str)
+            return text
+        end)
+        local devices = {}
+        for line in (raw or ""):gmatch("[^\n]+") do
+            local address, name, bonded, connected = line:match("^([^\t]*)\t([^\t]*)\t([01])\t([01])$")
+            if address then
+                table.insert(devices, {
+                    address = address,
+                    name = name,
+                    bonded = bonded == "1",
+                    connected = connected == "1",
+                })
+            end
+        end
+        return devices
+    end
+
+    android.bluetoothConnect = function(address)
+        return JNI:context(android.app.activity.vm, function(jni)
+            local addr = jni.env[0].NewStringUTF(jni.env, address)
+            local ok = jni:callBooleanMethod(android.app.activity.clazz, "bluetoothConnect", "(Ljava/lang/String;)Z", addr)
+            jni.env[0].DeleteLocalRef(jni.env, addr)
+            return ok
+        end)
+    end
+
     android.download = function(url, name)
         return JNI:context(android.app.activity.vm, function(jni)
             local uri_string = jni.env[0].NewStringUTF(jni.env, url)

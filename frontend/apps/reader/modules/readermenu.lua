@@ -483,31 +483,47 @@ end
 
 function ReaderMenu:onSwipeShowMenu(ges)
     if self.activation_menu ~= "tap" and ges.direction == "south" then
-        if G_reader_settings:nilOrTrue("show_bottom_menu") then
-            self.ui:handleEvent(Event:new("ShowConfigMenu"))
-        end
-        self:onShowMenu(self:_getTabIndexFromLocation(ges))
+        self:onShowPullDownPanel()
         self.ui:handleEvent(Event:new("HandledAsSwipe")) -- cancel any pan scroll made
         return true
     end
 end
 
+function ReaderMenu:onShowPullDownPanel()
+    if self.pulldown_panel then return true end
+    local PullDownPanel = require("ui/widget/pulldownpanel")
+    self.pulldown_panel = PullDownPanel:new{
+        ui = self.ui,
+        close_callback = function()
+            self.pulldown_panel = nil
+        end,
+    }
+    UIManager:show(self.pulldown_panel)
+    return true
+end
+
+function ReaderMenu:onShowQuickMenu()
+    if self.quick_menu then return true end
+    self.ui.keyselection:stopHighlightIndicator(true)
+    local ReaderQuickMenu = require("ui/widget/readerquickmenu")
+    self.quick_menu = ReaderQuickMenu:new{
+        ui = self.ui,
+        close_callback = function()
+            self.quick_menu = nil
+        end,
+    }
+    UIManager:show(self.quick_menu)
+    return true
+end
+
 function ReaderMenu:onTapShowMenu(ges)
     if self.activation_menu ~= "swipe" then
-        if G_reader_settings:nilOrTrue("show_bottom_menu") then
-            self.ui:handleEvent(Event:new("ShowConfigMenu"))
-        end
-        self:onShowMenu(self:_getTabIndexFromLocation(ges))
-        return true
+        return self:onShowQuickMenu()
     end
 end
 
 function ReaderMenu:onPressMenu()
-    if G_reader_settings:nilOrTrue("show_bottom_menu") then
-        self.ui:handleEvent(Event:new("ShowConfigMenu"))
-    end
-    self:onShowMenu()
-    return true
+    return self:onShowQuickMenu()
 end
 
 function ReaderMenu:onKeyPressShowMenu(_, key_ev)

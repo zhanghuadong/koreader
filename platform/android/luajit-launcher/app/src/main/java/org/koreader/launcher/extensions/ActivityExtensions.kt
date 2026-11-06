@@ -191,6 +191,13 @@ fun Activity.openWifi() {
     startActivityCompat(this, openWifiIntent)
 }
 
+fun Activity.openBluetooth() {
+    val openBluetoothIntent = Intent().apply {
+        action = Settings.ACTION_BLUETOOTH_SETTINGS
+    }
+    startActivityCompat(this, openBluetoothIntent)
+}
+
 fun Activity.pruneCacheDir() {
     try {
         getExternalFilesDir(null)?.let {

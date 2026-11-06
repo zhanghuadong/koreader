@@ -1,3 +1,4 @@
+local AutoTurnBar = require("ui/widget/autoturnbar")
 local BD = require("ui/bidi")
 local Blitbuffer = require("ffi/blitbuffer")
 local BookList = require("ui/widget/booklist")
@@ -812,7 +813,7 @@ function ReaderFooter:updateFooterContainer()
         table.insert(self.vertical_frame, self.footer_container)
     end
     self.footer_content = FrameContainer:new{
-        self.vertical_frame,
+        self.autoturn_bar_sec and self:genAutoTurnBar() or self.vertical_frame,
         background = Blitbuffer.COLOR_WHITE,
         bordersize = 0,
         padding = 0,
@@ -882,6 +883,9 @@ function ReaderFooter:rescheduleFooterAutoRefreshIfNeeded()
                 schedule = true
             end
         end
+    end
+    if self.autoturn_bar_sec then
+        schedule = true -- the bar shows a clock
     end
     if schedule then
         UIManager:scheduleIn(61 - tonumber(os.date("%S")), self.autoRefreshFooter)
@@ -2305,6 +2309,11 @@ function ReaderFooter:_updateFooterText(force_repaint, full_repaint)
         return
     end
 
+    if self.autoturn_bar_sec then
+        self.footer_content[1]:free()
+        self.footer_content[1] = self:genAutoTurnBar()
+    end
+
     local text = self:genFooterText() or ""
     self.footer_text:setText(text)
 
@@ -2473,7 +2482,7 @@ end
 function ReaderFooter:applyFooterMode(mode)
     if mode ~= nil then self.mode = mode end
     local prev_visible_state = self.view.footer_visible
-    self.view.footer_visible = (self.mode ~= self.mode_list.off)
+    self.view.footer_visible = (self.mode ~= self.mode_list.off) or self.autoturn_bar_sec ~= nil
 
     -- NOTE: _updateFooterText won't actually run the text generator(s) when hidden ;).
 
@@ -2517,6 +2526,10 @@ function ReaderFooter:onExitFlippingMode()
 end
 
 function ReaderFooter:TapFooter(ges)
+    if self.autoturn_bar_sec then
+        self.ui:handleEvent(Event:new("ShowAutoTurnDialog"))
+        return true
+    end
     if self.view.flipping_visible and ges then
         local pos = ges.pos
         local dimen = self.progress_bar.dimen
@@ -2679,6 +2692,36 @@ function ReaderFooter:refreshFooter(refresh, signal)
             UIManager:setDirty(self.view.dialog, "partial")
         end
     end
+end
+
+function ReaderFooter:genAutoTurnBar()
+    return AutoTurnBar:new{
+        width = self._saved_screen_width or Screen:getWidth(),
+        seconds = self.autoturn_bar_sec,
+        clock = datetime.secondsToHour(os.time(), G_reader_settings:isTrue("twelve_hour_clock")),
+        percent = self.percent_finished,
+    }
+end
+
+--- Replace the status bar with the autoturn bar (seconds = interval), or restore it (seconds = nil).
+-- Before the document is laid out, pass no_relayout: the margins will pick up the new height on their own.
+function ReaderFooter:setAutoTurnBar(seconds, no_relayout)
+    if self.settings.disabled then return end
+    local toggled = (seconds ~= nil) ~= (self.autoturn_bar_sec ~= nil)
+    self.autoturn_bar_sec = seconds
+    if toggled then
+        self:applyFooterMode()
+    end
+    if no_relayout then
+        self:updateFooterContainer()
+        self:resetLayout(true)
+        return
+    end
+    self:refreshFooter(true, toggled)
+    if toggled and self.ui.paging then
+        self.ui:handleEvent(Event:new("ReaderFooterVisibilityChange"))
+    end
+    self:rescheduleFooterAutoRefreshIfNeeded()
 end
 
 function ReaderFooter:onResume()

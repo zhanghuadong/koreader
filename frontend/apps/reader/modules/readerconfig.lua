@@ -153,7 +153,7 @@ end
 
 function ReaderConfig:onTapShowConfigMenu()
     if self.activation_menu ~= "swipe" then
-        self:onShowConfigMenu()
+        self.ui:handleEvent(Event:new("ShowQuickMenu"))
         return true
     end
 end

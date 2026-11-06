@@ -24030,6 +24030,290 @@ msgstr "Wallabag"
 msgid "annotations"
 msgstr "标注"
 
+#: frontend/ui/widget/readernavtitlebar.lua
+msgid "Chapters"
+msgstr "章节"
+
+#: frontend/apps/reader/modules/readertoc.lua
+msgid "Chapter %1/%2"
+msgstr "章节 %1/%2"
+
+#: frontend/apps/reader/modules/readerbookmark.lua
+msgid "1 bookmark"
+msgid_plural "%1 bookmarks"
+msgstr[0] "%1 个书签"
+
+#: frontend/apps/reader/modules/readerbookmark.lua
+msgid "No bookmarks"
+msgstr "无书签"
+
+#: frontend/apps/reader/modules/readerbookmark.lua
+msgid "Tap the top right corner of the page to quickly add one"
+msgstr "点击书页右上角区域快捷添加"
+
+#: frontend/apps/reader/modules/readerbookmark.lua
+msgid "Bookmark"
+msgstr "书签"
+
+#: frontend/apps/reader/modules/readerbookmark.lua
+msgid "Jump"
+msgstr "跳转"
+
+#: frontend/ui/widget/readerquickmenu.lua
+msgid "Typesetting"
+msgstr "排版"
+
+#: frontend/ui/widget/readerquickmenu.lua
+msgid "More"
+msgstr "更多"
+
+#: frontend/ui/widget/readerquickmenu.lua
+msgid "Book progress"
+msgstr "全书进度"
+
+#: frontend/ui/widget/readerquickmenu.lua
+msgid "Chapter progress"
+msgstr "章节进度"
+
+#: frontend/ui/widget/readerquickmenu.lua
+msgid "Reading time"
+msgstr "阅读时长"
+
+#: frontend/ui/widget/readerquickmenu.lua
+msgid "Bluetooth connection"
+msgstr "蓝牙连接"
+
+#: frontend/ui/widget/readerquickmenu.lua
+msgid "Auto page turn"
+msgstr "自动翻页"
+
+#: frontend/ui/widget/readerquickmenu.lua
+msgid "Touch on"
+msgstr "触控开"
+
+#: frontend/ui/widget/readerquickmenu.lua
+msgid "Touch off"
+msgstr "触控关"
+
+#: frontend/ui/widget/readerquickmenu.lua
+msgid "Advanced"
+msgstr "高级"
+
+#: frontend/ui/widget/readertypesetpanel.lua
+msgid "First-line indent"
+msgstr "首行缩进"
+
+#: frontend/ui/widget/readertypesetpanel.lua
+msgid "Line spacing"
+msgstr "行距"
+
+#: frontend/ui/widget/readertypesetpanel.lua
+msgid "Paragraph spacing"
+msgstr "段距"
+
+#: frontend/ui/widget/readertypesetpanel.lua
+msgid "Top/bottom margins"
+msgstr "上下边距"
+
+#: frontend/ui/widget/readertypesetpanel.lua
+msgid "Left/right margins"
+msgstr "左右边距"
+
+#: frontend/ui/widget/readertypesetpanel.lua
+msgid "%1px"
+msgstr "%1px"
+
+#: frontend/ui/widget/readertypesetpanel.lua
+msgid "1 font"
+msgid_plural "%1 fonts"
+msgstr[0] "%1 个字体"
+
+#: frontend/ui/widget/bluetoothdialog.lua
+msgid "Current connection"
+msgstr "当前连接"
+
+#: frontend/ui/widget/bluetoothdialog.lua
+msgid "No connection"
+msgstr "无连接"
+
+#: frontend/ui/widget/bluetoothdialog.lua
+msgid "Connecting to %1…"
+msgstr "正在连接 %1…"
+
+#: frontend/ui/widget/bluetoothdialog.lua
+msgid "Scanning…"
+msgstr "扫描中..."
+
+#: frontend/ui/widget/bluetoothdialog.lua
+msgid "No results"
+msgstr "无结果"
+
+#: frontend/ui/widget/bluetoothdialog.lua
+msgid "Scanning"
+msgstr "正在扫描"
+
+#: frontend/ui/widget/bluetoothdialog.lua
+msgid "Rescan"
+msgstr "重新扫描"
+
+#: frontend/ui/widget/bluetoothdialog.lua
+msgid "1 result"
+msgid_plural "%1 results"
+msgstr[0] "%1 个结果"
+
+#: frontend/ui/widget/autoturndialog.lua
+msgid "Page turn speed"
+msgstr "翻页速度"
+
+#: frontend/ui/widget/autoturndialog.lua
+msgctxt "Autoturn"
+msgid "Stop"
+msgstr "停用"
+
+msgctxt "Bluetooth"
+msgid "OK"
+msgstr "确定"
+
+msgid "Book %1 finished"
+msgstr "读完的第 %1 本书"
+
+msgid "%1 chapters · %2 pages"
+msgstr "%1 章 · %2 页"
+
+msgid "Total time"
+msgstr "累计时长"
+
+msgid "Total days"
+msgstr "累计天数"
+
+msgid "Scan for more reading stats"
+msgstr "扫码查看更多阅读数据"
+
+msgid "Show book finished card"
+msgstr "显示读完卡片"
+
+msgctxt "Pulldown"
+msgid "Brightness %1%"
+msgstr "亮度 %1%"
+
+msgctxt "Pulldown"
+msgid "Color temperature %1"
+msgstr "色温 %1"
+
+msgctxt "Pulldown"
+msgid "Cool %1"
+msgstr "冷光%1"
+
+msgctxt "Pulldown"
+msgid "Warm %1"
+msgstr "暖光%1"
+
+msgctxt "Pulldown"
+msgid "Neutral"
+msgstr "中性"
+
+msgctxt "Pulldown"
+msgid "Speed up"
+msgstr "加速"
+
+msgctxt "Pulldown"
+msgid "Full refresh"
+msgstr "全刷"
+
+msgctxt "Pulldown"
+msgid "Lock screen"
+msgstr "锁屏"
+
+msgctxt "Pulldown"
+msgid "Light on"
+msgstr "灯光开"
+
+msgctxt "Pulldown"
+msgid "Light off"
+msgstr "灯光关"
+
+msgctxt "Pulldown"
+msgid "Speed mode on"
+msgstr "加速已开启"
+
+msgctxt "Pulldown"
+msgid "Speed mode off"
+msgstr "加速已关闭"
+
+#: frontend/ui/widget/readeroptionspage.lua
+msgid "Reading options"
+msgstr "阅读选项"
+
+#: frontend/ui/widget/readeroptionspage.lua
+msgid "Reading orientation"
+msgstr "阅读方向"
+
+#: frontend/ui/widget/readeroptionspage.lua
+msgctxt "Reading options"
+msgid "Enable hyphenation"
+msgstr "启用断词"
+
+#: frontend/ui/widget/readeroptionspage.lua
+msgid "Anti-aliased text"
+msgstr "抗锯齿显示"
+
+#: frontend/ui/widget/readeroptionspage.lua
+msgid "EPUB images"
+msgstr "EPUB 图片"
+
+#: frontend/ui/widget/readeroptionspage.lua
+msgid "Grayscale images"
+msgstr "图片灰阶"
+
+#: frontend/ui/widget/readeroptionspage.lua
+msgid "Hide status bar"
+msgstr "隐藏状态栏"
+
+#: frontend/ui/widget/readeroptionspage.lua
+msgctxt "Orientation"
+msgid "Portrait"
+msgstr "纵向"
+
+#: frontend/ui/widget/readeroptionspage.lua
+msgctxt "Orientation"
+msgid "Landscape"
+msgstr "横向"
+
+#: frontend/ui/widget/readeroptionspage.lua
+msgctxt "Orientation"
+msgid "Inverted portrait"
+msgstr "纵向翻转"
+
+#: frontend/ui/widget/readeroptionspage.lua
+msgctxt "Orientation"
+msgid "Inverted landscape"
+msgstr "横向翻转"
+
+#: frontend/ui/widget/readeroptionspage.lua
+msgctxt "Alignment"
+msgid "Auto"
+msgstr "自动"
+
+#: frontend/ui/widget/readeroptionspage.lua
+msgctxt "Alignment"
+msgid "Left"
+msgstr "左对齐"
+
+#: frontend/ui/widget/readeroptionspage.lua
+msgctxt "Alignment"
+msgid "Center"
+msgstr "居中对齐"
+
+#: frontend/ui/widget/readeroptionspage.lua
+msgctxt "Alignment"
+msgid "Right"
+msgstr "右对齐"
+
+#: frontend/ui/widget/readeroptionspage.lua
+msgctxt "Alignment"
+msgid "Justify"
+msgstr "两端对齐"
+
 #~ msgid "Double flash sleep screen"
 #~ msgstr "闪烁两次让屏幕进入休眠"
 
@@ -24952,9 +25236,6 @@ msgstr "标注"
 
 #~ msgid "Hide battery status"
 #~ msgstr "隐藏电池状态"
-
-#~ msgid "Chapter progress"
-#~ msgstr "章节进度"
 
 #~ msgid "Style: thin"
 #~ msgstr "样式：细"
@@ -27149,9 +27430,6 @@ msgstr "标注"
 #~ "Send documents from calibre library directly to device via Wi-Fi "
 #~ "connection"
 #~ msgstr "通过Wi-Fi 从 caliber 库中直接发送文档"
-
-#~ msgid "Total days"
-#~ msgstr "总天数"
 
 #~ msgid "First opened"
 #~ msgstr "首次打开"

@@ -8,6 +8,8 @@ local time = require("ui/time")
 local _ = require("gettext")
 local T = require("ffi/util").template
 
+local DEFAULT_INTERVAL = 20
+
 local AutoTurn = WidgetContainer:extend{
     name = "autoturn",
     is_doc_only = true,
@@ -57,13 +59,14 @@ function AutoTurn:_unschedule()
     end
 end
 
-function AutoTurn:_start()
+function AutoTurn:_start(quiet)
     if self:_enabled() then
         local time_since_boot = UIManager:getElapsedTimeSinceBoot()
         logger.dbg("AutoTurn: start at", time.format_time(time_since_boot))
         PluginShare.pause_auto_suspend = true
         self.last_action_time = time_since_boot
         self:_schedule()
+        if quiet then return end
 
         local text
         if self.autoturn_distance == 1 then
@@ -92,7 +95,16 @@ function AutoTurn:init()
     self.task = function()
         self:_schedule()
     end
-    self:_start()
+    self:_start(true)
+    if self:_enabled() then
+        self.onResume = self._onResume
+        -- the document isn't laid out yet: no relayout needed
+        self.ui.view.footer:setAutoTurnBar(self.autoturn_sec, true)
+    end
+end
+
+function AutoTurn:updateFooterBar()
+    self.ui.view.footer:setAutoTurnBar(self:_enabled() and self.autoturn_sec or nil)
 end
 
 function AutoTurn:onCloseWidget()
@@ -120,7 +132,66 @@ end
 
 function AutoTurn:_onResume()
     logger.dbg("AutoTurn: onResume")
-    self:_start()
+    self:_start(true)
+end
+
+function AutoTurn:isActive()
+    return self:_enabled()
+end
+
+function AutoTurn:getInterval()
+    return self.autoturn_sec > 0 and self.autoturn_sec or DEFAULT_INTERVAL
+end
+
+function AutoTurn:setInterval(sec)
+    self.autoturn_sec = sec
+    G_reader_settings:saveSetting("autoturn_timeout_seconds", sec)
+    if self:_enabled() then
+        self:_unschedule()
+        self:_start(true)
+    end
+    self:updateFooterBar()
+end
+
+function AutoTurn:enable()
+    self.autoturn_sec = self:getInterval()
+    G_reader_settings:saveSetting("autoturn_timeout_seconds", self.autoturn_sec)
+    self.enabled = true
+    G_reader_settings:makeTrue("autoturn_enabled")
+    self:_unschedule()
+    self:_start(true)
+    self.onResume = self._onResume
+    self:updateFooterBar()
+end
+
+function AutoTurn:disable()
+    self.enabled = false
+    G_reader_settings:makeFalse("autoturn_enabled")
+    self:_unschedule()
+    self.onResume = nil
+    self:updateFooterBar()
+end
+
+function AutoTurn:onToggleAutoTurn()
+    if self:_enabled() then
+        self:disable()
+    else
+        self:enable()
+    end
+    return true
+end
+
+-- Starts autoturn if needed, then shows the speed popup above the status bar.
+function AutoTurn:onShowAutoTurnDialog()
+    if not self:_enabled() then
+        self:enable()
+    end
+    local AutoTurnDialog = require("ui/widget/autoturndialog")
+    UIManager:show(AutoTurnDialog:new{
+        autoturn = self,
+        bottom_offset = self.ui.view.footer_visible and self.ui.view.footer:getHeight() or 0,
+    })
+    return true
 end
 
 function AutoTurn:addToMainMenu(menu_items)
@@ -154,6 +225,7 @@ function AutoTurn:addToMainMenu(menu_items)
                     self:_unschedule()
                     menu:updateItems()
                     self.onResume = nil
+                    self:updateFooterBar()
                 end,
                 ok_always_enabled = true,
                 callback = function(t)
@@ -165,6 +237,7 @@ function AutoTurn:addToMainMenu(menu_items)
                     self:_start()
                     menu:updateItems()
                     self.onResume = self._onResume
+                    self:updateFooterBar()
                 end,
             }
             UIManager:show(autoturn_spin)

@@ -13,6 +13,7 @@ local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
 local InputContainer = require("ui/widget/container/inputcontainer")
 local LeftContainer = require("ui/widget/container/leftcontainer")
+local LineWidget = require("ui/widget/linewidget")
 local Math = require("optmath")
 local OverlapGroup = require("ui/widget/overlapgroup")
 local RightContainer = require("ui/widget/container/rightcontainer")
@@ -195,12 +196,17 @@ function MenuItem:init()
         text = mandatory or "",
         face = self.info_face,
         bold = self.bold,
-        fgcolor = mandatory_dim and Blitbuffer.COLOR_DARK_GRAY or nil,
+        fgcolor = self.inverted and Blitbuffer.COLOR_WHITE or (mandatory_dim and Blitbuffer.COLOR_DARK_GRAY or nil),
     }
     local mandatory_w = mandatory_widget:getWidth()
 
     local available_width = self.content_width - state_width - text_mandatory_padding - mandatory_w
-    local text_fgcolor = self.dim and Blitbuffer.COLOR_DARK_GRAY or nil
+    local text_fgcolor
+    if self.inverted then
+        text_fgcolor = Blitbuffer.COLOR_WHITE
+    elseif self.dim then
+        text_fgcolor = Blitbuffer.COLOR_DARK_GRAY
+    end
     local text_bgcolor = self.text_bgcolor
     local item_name
 
@@ -208,7 +214,10 @@ function MenuItem:init()
     -- because of some \n that would push the following text on another line that would
     -- overflow and not be displayed, or show a tofu char when displayed by TextWidget:
     -- get rid of any \n (which could be found in highlighted text in bookmarks).
-    local text = self.text:gsub("\n", " ")
+    local text = self.text
+    if not self.keep_newlines or self.single_line then
+        text = text:gsub("\n", " ")
+    end
 
     -- Wrap text with provided bidi_wrap_func (only provided by FileChooser,
     -- to correctly display filenames and directories)
@@ -439,12 +448,12 @@ function MenuItem:init()
         },
         HorizontalGroup:new{
             align = "center",
-            OverlapGroup:new{
+            self:wrapInverted(OverlapGroup:new{
                 dimen = Geom:new{w = self.content_width, h = self.dimen.h},
                 state_container,
                 text_container,
                 mandatory_container,
-            },
+            }),
         }
     }
     local hgroup = HorizontalGroup:new{
@@ -462,6 +471,20 @@ function MenuItem:init()
         bordersize = 0,
         padding = 0,
         hgroup,
+    }
+end
+
+function MenuItem:wrapInverted(widget)
+    if not self.inverted then
+        return widget
+    end
+    return FrameContainer:new{
+        background = Blitbuffer.COLOR_BLACK,
+        bordersize = 0,
+        padding = 0,
+        margin = 0,
+        radius = Size.radius.window,
+        widget,
     }
 end
 
@@ -642,6 +665,19 @@ local Menu = FocusManager:extend{
     close_callback = nil,
     linesize = Size.line.medium,
     line_color = Blitbuffer.COLOR_DARK_GRAY,
+    -- set to true for a footer with a back button, a text label and up/down page buttons
+    nav_footer = nil,
+    -- function(menu) returning the footer label text (nav_footer only)
+    nav_footer_text_func = nil,
+    -- set to true to hide the right-side "mandatory" text (page numbers...)
+    no_mandatory = nil,
+    -- set to true to show the current item (item_table.current) as white text on black
+    highlight_current_inverted = nil,
+    -- set to true to keep line breaks in item text (multi-line items only)
+    keep_newlines = nil,
+    -- message (and optional hint below it) centered in the list area when there are no items
+    empty_text = nil,
+    empty_subtext = nil,
 }
 
 function Menu:getItemShortCutIcon(dimen, key, style)
@@ -668,7 +704,9 @@ function Menu:_recalculateDimen(no_recalculate_dimen)
         top_height = self.title_bar:getHeight()
     end
     local bottom_height = 0
-    if self.page_return_arrow and self.page_info_text then
+    if self.nav_footer and self.page_info then
+        bottom_height = self.page_info:getSize().h + Size.line.medium
+    elseif self.page_return_arrow and self.page_info_text then
         -- The extra padding is for UX reasons only, to leave a bit of space above the footer.
         bottom_height = math.max(self.page_return_arrow:getSize().h, self.page_info_text:getSize().h)
                       + Size.padding.button
@@ -754,6 +792,21 @@ function Menu:init()
     if BD.mirroredUILayout() then
         chevron_left, chevron_right = chevron_right, chevron_left
         chevron_first, chevron_last = chevron_last, chevron_first
+    end
+    if self.nav_footer then
+        self.page_info_left_chev = Button:new{
+            icon = "chevron.up",
+            callback = function() self:onPrevPage() end,
+            bordersize = 0,
+            show_parent = self.show_parent,
+        }
+        self.page_info_right_chev = Button:new{
+            icon = "chevron.up",
+            icon_rotation_angle = 180,
+            callback = function() self:onNextPage() end,
+            bordersize = 0,
+            show_parent = self.show_parent,
+        }
     end
     self.page_info_left_chev = self.page_info_left_chev or Button:new{
         icon = chevron_left,
@@ -855,17 +908,57 @@ function Menu:init()
             buttons = buttons,
         },
     }
-    self.page_info = HorizontalGroup:new{
-        self.page_info_first_chev,
-        self.page_info_spacer,
-        self.page_info_left_chev,
-        self.page_info_spacer,
-        self.page_info_text,
-        self.page_info_spacer,
-        self.page_info_right_chev,
-        self.page_info_spacer,
-        self.page_info_last_chev,
-    }
+    if self.nav_footer then
+        self.nav_footer_back = Button:new{
+            icon = chevron_left,
+            callback = function() self:onClose() end,
+            bordersize = 0,
+            show_parent = self.show_parent,
+        }
+        local content_h = math.max(self.nav_footer_back:getSize().h, self.page_info_left_chev:getSize().h,
+                                   self.page_info_text:getSize().h)
+        -- Twice the height of a compact footer (separator line + padding + buttons).
+        local footer_h = 2 * (content_h + Size.padding.button + Size.line.medium) - Size.line.medium
+        local row_dimen = Geom:new{ w = self.inner_dimen.w, h = footer_h }
+        self.nav_footer_left_group = HorizontalGroup:new{
+            align = "center",
+            HorizontalSpan:new{ width = Size.padding.default },
+            self.nav_footer_back,
+            self.page_info_text,
+        }
+        self.page_info = HorizontalGroup:new{
+            OverlapGroup:new{
+                allow_mirroring = false,
+                dimen = row_dimen,
+                LeftContainer:new{
+                    dimen = row_dimen:copy(),
+                    self.nav_footer_left_group,
+                },
+                RightContainer:new{
+                    dimen = row_dimen:copy(),
+                    HorizontalGroup:new{
+                        align = "center",
+                        self.page_info_left_chev,
+                        HorizontalSpan:new{ width = Screen:scaleBySize(24) },
+                        self.page_info_right_chev,
+                        HorizontalSpan:new{ width = Size.padding.default },
+                    },
+                },
+            },
+        }
+    else
+        self.page_info = HorizontalGroup:new{
+            self.page_info_first_chev,
+            self.page_info_spacer,
+            self.page_info_left_chev,
+            self.page_info_spacer,
+            self.page_info_text,
+            self.page_info_spacer,
+            self.page_info_right_chev,
+            self.page_info_spacer,
+            self.page_info_last_chev,
+        }
+    end
 
     -- return button
     self.page_return_arrow = self.page_return_arrow or Button:new{
@@ -890,10 +983,24 @@ function Menu:init()
 
     local header = self.no_title and VerticalSpan:new{ width = 0 } or self.title_bar
     local body = self.item_group
-    local footer = BottomContainer:new{
-        dimen = self.inner_dimen:copy(),
-        self.page_info,
-    }
+    local footer
+    if self.nav_footer then
+        footer = BottomContainer:new{
+            dimen = self.inner_dimen:copy(),
+            VerticalGroup:new{
+                LineWidget:new{
+                    dimen = Geom:new{ w = self.inner_dimen.w, h = Size.line.medium },
+                    background = Blitbuffer.COLOR_BLACK,
+                },
+                self.page_info,
+            },
+        }
+    else
+        footer = BottomContainer:new{
+            dimen = self.inner_dimen:copy(),
+            self.page_info,
+        }
+    end
     local page_return = BottomContainer:new{
         dimen = self.inner_dimen:copy(),
         WidgetContainer:new{
@@ -919,9 +1026,11 @@ function Menu:init()
         allow_mirroring = false,
         dimen = self.inner_dimen:copy(),
         self.content_group,
-        page_return,
-        footer,
     }
+    if not self.nav_footer then -- its slot would cover the footer back button
+        table.insert(content, page_return)
+    end
+    table.insert(content, footer)
 
     self[1] = FrameContainer:new{
         background = Blitbuffer.COLOR_WHITE,
@@ -1045,7 +1154,11 @@ function Menu:updatePageInfo(select_number)
             self:moveFocusTo(x, y, is_focused and FocusManager.FORCED_FOCUS or FocusManager.FOCUS_ONLY_ON_NT)
         end
         -- update page information
-        self.page_info_text:setText(T(_("Page %1 of %2"), self.page, self.page_num))
+        if self.nav_footer_text_func then
+            self.page_info_text:setText(self.nav_footer_text_func(self))
+        else
+            self.page_info_text:setText(T(_("Page %1 of %2"), self.page, self.page_num))
+        end
         if self.page_num > 1 then
             self.page_info_text:enable()
         else
@@ -1063,14 +1176,25 @@ function Menu:updatePageInfo(select_number)
         self.page_info_last_chev:enableDisable(self.page < self.page_num)
         self.page_return_arrow:enableDisable(#self.paths > 0)
     else
-        self.page_info_text:setText(_("No items"))
+        self.page_info_text:setText(self.nav_footer_text_func and self.nav_footer_text_func(self) or _("No items"))
         self.page_info_text:disableWithoutDimming()
 
-        self.page_info_left_chev:hide()
-        self.page_info_right_chev:hide()
+        if self.nav_footer then
+            -- keep the footer layout stable: arrows stay visible, just inactive
+            self.page_info_left_chev:show()
+            self.page_info_right_chev:show()
+            self.page_info_left_chev:disableWithoutDimming()
+            self.page_info_right_chev:disableWithoutDimming()
+        else
+            self.page_info_left_chev:hide()
+            self.page_info_right_chev:hide()
+        end
         self.page_info_first_chev:hide()
         self.page_info_last_chev:hide()
         self.page_return_arrow:showHide(self.onReturn ~= nil)
+    end
+    if self.nav_footer_left_group then
+        self.nav_footer_left_group:resetLayout()
     end
 end
 
@@ -1122,11 +1246,13 @@ function Menu:updateItems(select_number, no_recalculate_dimen)
             text_bgcolor = item.text_bgcolor,
             bidi_wrap_func = item.bidi_wrap_func,
             post_text = item.post_text,
-            mandatory = item.mandatory,
-            mandatory_func = item.mandatory_func,
+            mandatory = not self.no_mandatory and item.mandatory or nil,
+            mandatory_func = not self.no_mandatory and item.mandatory_func or nil,
             mandatory_dim = item.mandatory_dim or item.dim,
             mandatory_dim_func = item.mandatory_dim_func,
             bold = self.item_table.current == index or item.bold == true,
+            inverted = self.highlight_current_inverted and self.item_table.current == index,
+            keep_newlines = self.keep_newlines,
             dim = item.dim,
             font_size = self.font_size,
             infont_size = self.items_mandatory_font_size or (self.font_size - 4),
@@ -1151,6 +1277,9 @@ function Menu:updateItems(select_number, no_recalculate_dimen)
         -- this is for focus manager
         table.insert(self.layout, {item_tmp})
     end
+    if #self.item_table == 0 and self.empty_text then
+        table.insert(self.item_group, self:getEmptyStateWidget())
+    end
 
     self:updatePageInfo(select_number)
     self:mergeTitleBarIntoLayout()
@@ -1161,6 +1290,33 @@ function Menu:updateItems(select_number, no_recalculate_dimen)
             or self.dimen
         return "ui", refresh_dimen
     end)
+end
+
+function Menu:getEmptyStateWidget()
+    local width = self.inner_dimen.w - 2 * Size.padding.fullscreen
+    local group = VerticalGroup:new{
+        align = "center",
+        TextWidget:new{
+            text = self.empty_text,
+            face = Font:getFace("cfont", 22),
+            bold = true,
+            max_width = width,
+        },
+    }
+    if self.empty_subtext then
+        table.insert(group, VerticalSpan:new{ width = Size.padding.large })
+        table.insert(group, TextBoxWidget:new{
+            text = self.empty_subtext,
+            face = Font:getFace("cfont", 18),
+            bold = true,
+            width = width,
+            alignment = "center",
+        })
+    end
+    return CenterContainer:new{
+        dimen = Geom:new{ w = self.inner_dimen.w, h = self.available_height },
+        group,
+    }
 end
 
 -- merge TitleBar layout into self FocusManager layout

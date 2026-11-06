@@ -57,6 +57,9 @@ function ReaderStatus:onEndOfBook()
     local settings = G_reader_settings:readSetting("end_document_action") or "pop-up"
     local top_widget = UIManager:getTopmostVisibleWidget() or {}
     if settings == "pop-up" and top_widget.name ~= "end_document" then
+        self:markBook(true)
+        UIManager:show(require("ui/widget/bookfinishedcard"):new{ ui = self.ui })
+    elseif settings == "pop-up_dialog" and top_widget.name ~= "end_document" then
         local button_dialog
         local buttons = {
             {
@@ -218,6 +221,7 @@ end
 
 local end_actions = {
     "pop-up",
+    "pop-up_dialog",
     "nothing",
     "book_status",
     "delete_file",
@@ -228,6 +232,7 @@ local end_actions = {
     "book_status_file_browser",
 }
 local end_actions_texts = {
+    _("Show book finished card"),
     _("Ask with popup dialog"),
     _("Do nothing"),
     _("Book status"),

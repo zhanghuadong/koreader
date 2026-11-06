@@ -13,6 +13,7 @@ local InfoMessage = require("ui/widget/infomessage")
 local InputContainer = require("ui/widget/container/inputcontainer")
 local InputDialog = require("ui/widget/inputdialog")
 local Menu = require("ui/widget/menu")
+local ReaderNavTitleBar = require("ui/widget/readernavtitlebar")
 local Size = require("ui/size")
 local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
@@ -66,7 +67,7 @@ function ReaderToc:onGesture() end
 -- end
 
 function ReaderToc:getTitle()
-    local title = _("Table of contents")
+    local title = _("Chapters")
     -- Handmade ToC has precedence over alternative ToC
     if self.ui.handmade:isHandmadeTocEnabled() then
         title = title .. " " .. self.ui.handmade.custom_toc_symbol
@@ -812,7 +813,6 @@ function ReaderToc:onShowToc()
     local items_per_page = G_reader_settings:readSetting("toc_items_per_page") or self.toc_items_per_page_default
     local items_font_size = G_reader_settings:readSetting("toc_items_font_size") or Menu.getItemFontSize(items_per_page)
     local items_show_chapter_length = G_reader_settings:isTrue("toc_items_show_chapter_length")
-    local items_with_dots = G_reader_settings:nilOrTrue("toc_items_with_dots")
 
     self:fillToc()
     -- build menu items
@@ -887,22 +887,43 @@ function ReaderToc:onShowToc()
     --       because we inflate the state Button's width on the left, mainly to give it a larger tap zone.
     --       This yields *slightly* better alignment between state & mandatory (in terms of effective margins).
     local button_size = self.expand_button:getSize()
+    local nav_title_bar = ReaderNavTitleBar:new{
+        active_tab = "toc",
+        tab_callback = function()
+            self.toc_menu.close_callback()
+            self.ui:handleEvent(Event:new("ShowBookmark"))
+        end,
+        hold_callback = function()
+            self:showTocDialog()
+        end,
+        right_icon = "appbar.locate",
+        right_icon_tap_callback = function()
+            self:locateCurrentChapter()
+        end,
+    }
     local toc_menu = Menu:new{
         title = self:getTitle(),
         subtitle = self.search_string and T(_("Query: %1"), self.search_string) or "",
+        custom_title_bar = nav_title_bar,
+        nav_footer = true,
+        nav_footer_text_func = function()
+            local total = #self.toc
+            local idx = total > 0 and self:getTocIndexByPage(self.pageno) or 0
+            return T(_("Chapter %1/%2"), idx or 0, total)
+        end,
+        no_mandatory = true,
+        highlight_current_inverted = true,
         state_w = can_collapse and button_size.w or 0,
         ui = self.ui,
         is_borderless = true,
         is_popout = false,
         single_line = true,
         align_baselines = true,
-        with_dots = items_with_dots,
+        with_dots = false,
         items_per_page = items_per_page,
         items_font_size = items_font_size,
         items_padding = can_collapse and math.floor(Size.padding.fullscreen / 2) or nil, -- c.f., note above. Menu's default is twice that.
         line_color = Blitbuffer.COLOR_WHITE,
-        title_bar_fm_style = true,
-        title_bar_left_icon = "appbar.menu",
         onLeftButtonTap = function()
             self:showTocDialog()
         end,
@@ -1064,6 +1085,9 @@ function ReaderToc:onShowToc()
     end
 
     toc_menu.show_parent = menu_container
+    if nav_title_bar.right_button then
+        nav_title_bar.right_button.show_parent = menu_container
+    end
 
     self.toc_menu = toc_menu
 
@@ -1092,6 +1116,19 @@ function ReaderToc:onShowToc()
     UIManager:show(menu_container)
 
     return true
+end
+
+-- Scroll the chapter list back to the chapter being read, expanding its parents.
+function ReaderToc:locateCurrentChapter()
+    if not self.toc_menu then return end
+    self:updateCurrentNode()
+    if self.search_string == nil then
+        local idx = self:getTocIndexByPage(self.pageno)
+        if idx then
+            self:expandParentNode(idx)
+        end
+    end
+    self.toc_menu:switchItemTable(nil, self.collapsed_toc, self.collapsed_toc.current or -1)
 end
 
 function ReaderToc:updateChaptersDisplayedTitlePageNumber()

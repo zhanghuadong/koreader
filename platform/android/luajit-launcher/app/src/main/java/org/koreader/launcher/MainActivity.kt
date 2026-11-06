@@ -54,6 +54,11 @@ class MainActivity : NativeActivity(), LuaInterface,
     // Splashscreen is active
     private var splashScreen: Boolean = true
 
+    // Created on first use by the Bluetooth dialog
+    private var bluetooth: BluetoothHelper? = null
+    private fun bluetoothHelper(): BluetoothHelper =
+        bluetooth ?: BluetoothHelper(this).also { bluetooth = it }
+
     // surface used on devices that need a view
     private var view: NativeSurfaceView? = null
     private class NativeSurfaceView(context: Context): SurfaceView(context),
@@ -252,6 +257,7 @@ class MainActivity : NativeActivity(), LuaInterface,
     public override fun onDestroy() {
         Log.v(tag, "onDestroy()")
         unregisterReceiver(event)
+        bluetooth?.release()
         super.onDestroy()
     }
 
@@ -646,6 +652,30 @@ class MainActivity : NativeActivity(), LuaInterface,
 
     override fun openWifiSettings() {
         openWifi()
+    }
+
+    override fun openBluetoothSettings() {
+        openBluetooth()
+    }
+
+    override fun bluetoothStartScan(): Boolean {
+        return bluetoothHelper().startScan()
+    }
+
+    override fun bluetoothStopScan() {
+        bluetooth?.stopScan()
+    }
+
+    override fun bluetoothIsScanning(): Boolean {
+        return bluetooth?.isScanning() ?: false
+    }
+
+    override fun bluetoothGetDevices(): String {
+        return bluetoothHelper().getDevices()
+    }
+
+    override fun bluetoothConnect(address: String): Boolean {
+        return bluetoothHelper().connect(address)
     }
 
     override fun performHapticFeedback(constant: Int, force: Int) {

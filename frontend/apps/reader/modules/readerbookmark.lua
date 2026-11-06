@@ -1,5 +1,6 @@
 local BD = require("ui/bidi")
 local Blitbuffer = require("ffi/blitbuffer")
+local BookmarkActionPopup = require("ui/widget/bookmarkactionpopup")
 local ButtonDialog = require("ui/widget/buttondialog")
 local ButtonSelector = require("ui/widget/buttonselector")
 local CenterContainer = require("ui/widget/container/centercontainer")
@@ -15,6 +16,7 @@ local InputContainer = require("ui/widget/container/inputcontainer")
 local InputDialog = require("ui/widget/inputdialog")
 local LineWidget = require("ui/widget/linewidget")
 local Menu = require("ui/widget/menu")
+local ReaderNavTitleBar = require("ui/widget/readernavtitlebar")
 local Size = require("ui/size")
 local SpinWidget = require("ui/widget/spinwidget")
 local TextBoxWidget = require("ui/widget/textboxwidget")
@@ -710,26 +712,47 @@ function ReaderBookmark:onShowBookmark()
         table.sort(item_table, sort_func)
     end
 
-    local items_per_page = G_reader_settings:readSetting("bookmarks_items_per_page")
-    local items_font_size = G_reader_settings:readSetting("bookmarks_items_font_size", Menu.getItemFontSize(items_per_page))
-    local multilines_show_more_text = G_reader_settings:isTrue("bookmarks_items_multilines_show_more_text")
-    local show_separator = G_reader_settings:isTrue("bookmarks_items_show_separator")
+    -- Each entry shows a date line and up to two lines of text.
+    local items_per_page = 5
+    local items_font_size = G_reader_settings:readSetting("bookmarks_items_font_size") or Menu.getItemFontSize(14)
 
     self.bookmark_menu = CenterContainer:new{
         dimen = Screen:getSize(),
         covers_fullscreen = true, -- hint for UIManager:_repaint()
     }
+    local nav_title_bar = ReaderNavTitleBar:new{
+        active_tab = "bookmark",
+        tab_callback = function()
+            self.bookmark_menu[1].close_callback()
+            self.ui:handleEvent(Event:new("ShowToc"))
+        end,
+        hold_callback = function()
+            self.bookmark_menu[1]:onLeftButtonTap()
+        end,
+    }
     local bm_menu = Menu:new{
         title = T(_("Bookmarks (%1)"), #item_table),
         item_table = item_table,
+        custom_title_bar = nav_title_bar,
+        nav_footer = true,
+        nav_footer_text_func = function(menu)
+            if menu.select_count then
+                return T(N_("1 bookmark selected", "%1 bookmarks selected", menu.select_count), menu.select_count)
+            end
+            local nb = #menu.item_table
+            return T(N_("1 bookmark", "%1 bookmarks", nb), nb)
+        end,
+        no_mandatory = true,
+        keep_newlines = true,
+        multilines_forced = true,
+        empty_text = _("No bookmarks"),
+        empty_subtext = _("Tap the top right corner of the page to quickly add one"),
         is_borderless = true,
         is_popout = false,
-        title_bar_fm_style = true,
         items_per_page = items_per_page,
         items_font_size = items_font_size,
-        items_max_lines = self.items_max_lines,
-        multilines_show_more_text = multilines_show_more_text,
-        line_color = show_separator and Blitbuffer.COLOR_DARK_GRAY or Blitbuffer.COLOR_WHITE,
+        multilines_show_more_text = false,
+        line_color = Blitbuffer.COLOR_DARK_GRAY,
         title_bar_left_icon = "appbar.menu",
         on_close_ges = {
             GestureRange:new{
@@ -769,7 +792,11 @@ function ReaderBookmark:onShowBookmark()
     end
 
     function bm_menu:onMenuHold(item)
-        bookmark:showBookmarkDetails(item)
+        if self.select_count then
+            bookmark:showBookmarkDetails(item)
+        else
+            bookmark:showBookmarkActions(item)
+        end
         return true
     end
 
@@ -1128,29 +1155,22 @@ end
 
 function ReaderBookmark:getBookmarkItemText(item)
     local text
-    if item.type == "highlight" or self.items_text == "text" then
-        text = self.display_prefix[item.type] .. item.text_orig
+    if item.type == "note" and self.items_text == "note" then
+        text = item.note
+    elseif item.type == "bookmark" and (item.text_orig == nil or item.text_orig == "") then
+        text = T(_("Page %1"), self:getBookmarkPageString(item.page))
     else
-        if item.type == "note" and self.items_text == "note" then
-            text = self.display_prefix["note"] .. item.note
-        else
-            if item.type == "bookmark" then
-                text = self.display_prefix["bookmark"]
-            else -- it is a note, but we show the "highlight" prefix before the highlighted text
-                text = self.display_prefix["highlight"]
-            end
-            if self.items_text == "all" or self.items_text == "note" then
-                text = text .. item.text_orig
-            end
-            if item.note then
-                text = text .. "\u{2002}" .. self.display_prefix["note"] .. item.note
-            end
+        text = item.text_orig
+        if item.note and self.items_text == "all" then
+            text = text .. "\u{2002}" .. self.display_prefix["note"] .. item.note
         end
     end
-    if self.sorting_mode == "date" then
-        text = item.datetime .. "\u{2002}" .. text
-    end
-    return text
+    text = text:gsub("%s*\n%s*", " ")
+    -- "YYYY-MM-DD HH:MM:SS" is shown as "MM/DD HH:MM"
+    local datetime = item.datetime or ""
+    local month, day, hour_min = datetime:match("^%d+%-(%d+)%-(%d+) (%d+:%d+)")
+    local date_line = month and string.format("%s/%s %s", month, day, hour_min) or datetime
+    return date_line .. "\n" .. text
 end
 
 function ReaderBookmark:_getDialogHeader(bookmark, full)
@@ -1182,6 +1202,49 @@ function ReaderBookmark:getBookmarkDetailsText(bookmark, book)
                 self.ui.bookinfo.prettifyAuthors(book.doc_props.authors, 1)))
     end
     return TextBoxWidget.PTF_HEADER .. table.concat(t, "\n")
+end
+
+function ReaderBookmark:showBookmarkActions(item)
+    local bm_menu = self.bookmark_menu[1]
+    local preview = item.note
+    if preview == nil or preview == "" then
+        preview = item.text_orig
+    end
+    if preview == nil or preview == "" then
+        preview = T(_("Page %1"), self:getBookmarkPageString(item.page))
+    end
+    local actions = {
+        {
+            icon = "bookmark.goto",
+            text = _("Jump"),
+            callback = function()
+                self.ui.link:addCurrentLocationToStack()
+                self:gotoBookmark(item.page, item.pos0)
+                bm_menu.close_callback()
+            end,
+        },
+    }
+    if not self.ui.highlight.select_mode then
+        table.insert(actions, {
+            icon = "bookmark.delete",
+            text = _("Delete"),
+            callback = function()
+                self:removeItem(item)
+                for i, v in ipairs(bm_menu.item_table) do
+                    if v == item then
+                        table.remove(bm_menu.item_table, i)
+                        break
+                    end
+                end
+                self:updateBookmarkList(bm_menu.item_table, -1)
+            end,
+        })
+    end
+    UIManager:show(BookmarkActionPopup:new{
+        title = _("Bookmark"),
+        text = preview,
+        actions = actions,
+    })
 end
 
 function ReaderBookmark:showBookmarkDetails(item_or_index)

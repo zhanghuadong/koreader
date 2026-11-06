@@ -46,6 +46,13 @@ export GRADLE_FLAGS="${GRADLE_FLAGS:--x lintVitalArmRocksRelease -x lintVitalRep
 export PARALLEL_JOBS="${PARALLEL_JOBS:-1}"
 export NINJAFLAGS="${NINJAFLAGS:--j1}"
 export MAKEFLAGS="${MAKEFLAGS:--j1}"
+# Repo history was re-initialized; keep versionCode above the last upstream-based build
+# (12221 commits; gradle appends the arch digit, giving 122211).
+export ANDROID_VERSION="${ANDROID_VERSION:-$((12221 + $(git -C "${ROOT}" rev-list --count HEAD)))}"
+# The launcher only re-extracts the Lua bundle when module/version.txt changes;
+# stamp each build so uncommitted changes still reach the device.
+# Must start with "_<digit>" so Version:getCurrentPlatform() still matches the dist name.
+export KO_BUNDLE_STAMP="${KO_BUNDLE_STAMP-_$(date +%Y%m%d%H%M%S)}"
 
 if ! command -v clang >/dev/null; then
   echo "Install host clang (needed for LuaJIT minilua): sudo apt install -y clang gcc-multilib pkg-config"

@@ -387,7 +387,47 @@ end
 
 -- Called by ReaderTypeset, returns the already built string
 function ReaderStyleTweak:getCssText()
+    local typeset_css = self:getTypesetCssText()
+    if typeset_css then
+        return self.css_text and (self.css_text .. "\n" .. typeset_css) or typeset_css
+    end
     return self.css_text
+end
+
+-- Typesetting set from the reader quick menu and reading options (global, not tied to style tweaks):
+-- first-line indent, paragraph spacing, text alignment, hidden images
+function ReaderStyleTweak:getTypesetCssText()
+    local indent = G_reader_settings:readSetting("typeset_text_indent")
+    local para = G_reader_settings:readSetting("typeset_paragraph_spacing")
+    local rules = {}
+    if indent then
+        table.insert(rules, string.format("text-indent: %gem !important;", indent))
+    end
+    if para then
+        -- 1.0x means no gap between paragraphs, each extra 1.0x adds 1em
+        table.insert(rules, string.format("margin-top: 0 !important; margin-bottom: %gem !important;", para - 1))
+    end
+    local css = {}
+    if #rules > 0 then
+        table.insert(css, "p { " .. table.concat(rules, " ") .. " }")
+    end
+    local align = G_reader_settings:readSetting("typeset_text_align")
+    if align then
+        table.insert(css, string.format("body, p, li { text-align: %s !important; }", align))
+    end
+    if G_reader_settings:isTrue("typeset_hide_images") then
+        table.insert(css, "img, image, svg { display: none !important; }")
+    end
+    if #css == 0 then
+        return
+    end
+    return table.concat(css, "\n")
+end
+
+-- Global "anti-aliased text" reading option (crengine's font manager is shared by all documents)
+function ReaderStyleTweak:applyFontAntialiasing()
+    local mode = G_reader_settings:nilOrTrue("cre_font_antialiasing") and 2 or 0
+    self.ui.document._document:setIntProperty("font.antialiasing.mode", mode)
 end
 
 -- Build css_text, and request ReaderTypeset to apply it if wanted
@@ -454,6 +494,7 @@ function ReaderStyleTweak:onReadSettings(config)
     self.book_style_tweak_enabled = config:readSetting("book_style_tweak_enabled")
     self.book_style_tweak_last_edit_pos = config:readSetting("book_style_tweak_last_edit_pos")
     self:updateCssText()
+    self:applyFontAntialiasing()
 end
 
 function ReaderStyleTweak:onSaveSettings()
