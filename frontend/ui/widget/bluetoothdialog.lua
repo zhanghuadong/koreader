@@ -1,6 +1,8 @@
 --[[--
-Bluetooth dialog (Android): scans for devices, lists them page by page and connects on tap.
-The platform side lives in luajit-launcher (BluetoothHelper.kt, exposed through android.lua).
+蓝牙连接对话框（Android）：扫描附近设备，分页列出，点击设备即连接。
+
+竖屏为单栏布局；横屏为左右两栏（左侧设备列表，右侧当前连接和按钮）。
+平台侧实现在 luajit-launcher 中（BluetoothHelper.kt，通过 android.lua 暴露给 Lua）。
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
@@ -31,13 +33,15 @@ local N_ = _.ngettext
 local T = require("ffi/util").template
 local Screen = Device.screen
 
-local POLL_INTERVAL = 1
-local CONNECT_TIMEOUT = 30
+local POLL_INTERVAL = 1    -- 扫描/连接期间轮询设备列表的间隔（秒）
+local CONNECT_TIMEOUT = 30 -- 连接超时（秒），超时后不再显示"正在连接"
 
+-- 可点击的行容器：尺寸取自子控件
 local TapRow = InputContainer:extend{
     callback = nil,
 }
 
+-- 按子控件尺寸注册点击手势
 function TapRow:init()
     local size = self[1]:getSize()
     self.dimen = Geom:new{ x = 0, y = 0, w = size.w, h = size.h }
@@ -59,15 +63,16 @@ function TapRow:onTapRow()
 end
 
 local BluetoothDialog = InputContainer:extend{
-    devices = nil,
-    scanning = false,
-    page = 1,
-    connecting = nil, -- { address = , name = , deadline = }
+    devices = nil,    -- 设备列表，每项为 { address, name, bonded, connected }
+    scanning = false, -- 是否正在扫描
+    page = 1,         -- 设备列表当前页
+    connecting = nil, -- 正在连接的设备 { address = , name = , deadline = 超时时间 }
 }
 
+-- 计算对话框尺寸，注册返回键、点击外部关闭和滑动翻页手势
 function BluetoothDialog:init()
     self.android = require("android")
-    -- landscape: device list on the left, current connection and buttons on the right
+    -- 横屏：左侧设备列表，右侧当前连接和按钮
     self.landscape = Screen:getWidth() > Screen:getHeight()
     self.width = math.floor(Screen:getWidth() * (self.landscape and 0.9 or 0.84))
     self.height = math.floor(Screen:getHeight() * (self.landscape and 0.86 or 0.88))
@@ -90,11 +95,12 @@ function BluetoothDialog:init()
     }
     self.poll_task = function() self:poll() end
 
-    -- a scan starts as soon as the dialog is shown
+    -- 对话框一显示就开始扫描（见 onShow），首次绘制先显示"正在扫描…"
     self.scanning = true
     self:update()
 end
 
+-- 清空列表，开始扫描，并启动轮询
 function BluetoothDialog:startScan()
     self.devices = {}
     self.page = 1
@@ -103,11 +109,14 @@ function BluetoothDialog:startScan()
     self:schedulePoll()
 end
 
+-- 安排下一次轮询（先取消已安排的，避免重复）
 function BluetoothDialog:schedulePoll()
     UIManager:unschedule(self.poll_task)
     UIManager:scheduleIn(POLL_INTERVAL, self.poll_task)
 end
 
+-- 轮询：更新扫描状态和设备列表；目标设备已连上或超时则结束"正在连接"；
+-- 仍在扫描或连接时继续轮询
 function BluetoothDialog:poll()
     self.scanning = self.android.bluetoothIsScanning()
     self.devices = self.android.bluetoothGetDevices()
@@ -123,6 +132,7 @@ function BluetoothDialog:poll()
     end
 end
 
+-- 返回列表中第一个已连接的设备，没有则返回 nil
 function BluetoothDialog:getConnectedDevice()
     for _, dev in ipairs(self.devices) do
         if dev.connected then
@@ -131,6 +141,7 @@ function BluetoothDialog:getConnectedDevice()
     end
 end
 
+-- 发起连接：请求成功后记录正在连接的设备（连接时扫描会停止），继续轮询直到连上或超时
 function BluetoothDialog:connect(dev)
     if self.android.bluetoothConnect(dev.address) then
         self.connecting = { address = dev.address, name = dev.name, deadline = os.time() + CONNECT_TIMEOUT }
@@ -140,6 +151,7 @@ function BluetoothDialog:connect(dev)
     end
 end
 
+-- "当前连接"行：正在连接显示"正在连接 xxx…"，已连接显示对勾 + 设备名，否则显示"无连接"
 function BluetoothDialog:buildCurrentRow(max_w, face, icon_size, icon_gap)
     local text, icon
     local connected = self:getConnectedDevice()
@@ -165,6 +177,7 @@ function BluetoothDialog:buildCurrentRow(max_w, face, icon_size, icon_gap)
     return row
 end
 
+-- 右上角关闭按钮
 function BluetoothDialog:buildCloseButton()
     local size = Screen:scaleBySize(28)
     return Button:new{
@@ -178,7 +191,7 @@ function BluetoothDialog:buildCloseButton()
     }
 end
 
--- Two panes: title and device list on the left; close, current connection and Cancel | OK on the right.
+-- 横屏两栏布局：左栏为标题和设备列表；右栏为关闭按钮、当前连接，底部"取消 | 确定"
 function BluetoothDialog:updateLandscape()
     local border = Size.border.thick
     local radius = Screen:scaleBySize(10)
@@ -205,8 +218,7 @@ function BluetoothDialog:updateLandscape()
         }
     end
 
-    -- both panes share the header height, so the result count lines up with "Current connection"
-    -- and the first device with the current one
+    -- 两栏标题区高度一致，使左侧"N 个结果"与右侧"当前连接"对齐，第一个设备与当前连接行对齐
     local close_button = self:buildCloseButton()
     local title = TextWidget:new{
         text = _("Bluetooth connection"),
@@ -216,7 +228,7 @@ function BluetoothDialog:updateLandscape()
     }
     local header_h = math.max(title:getSize().h, close_button:getSize().h)
 
-    -- Left pane
+    -- 左栏：标题 + 设备列表（无设备时居中显示"正在扫描…"或"无结果"）
     local left_top = VerticalGroup:new{
         align = "left",
         VerticalSpan:new{ width = Size.padding.large },
@@ -247,14 +259,14 @@ function BluetoothDialog:updateLandscape()
         body,
     }
 
-    -- Right pane
+    -- 右栏：关闭按钮、"当前连接"标签和当前连接行，底部"取消 | 确定"（两者目前都只关闭对话框）
     local footer_h = Screen:scaleBySize(56)
     local half_w = math.floor(right_w / 2)
     local function footerButton(text, callback)
         return Button:new{
             text = text,
             width = half_w - Size.line.medium,
-            -- stay clear of the rounded bottom corner
+            -- 上下各留出圆角半径，避免按钮遮住对话框右下圆角
             height = footer_h - 2 * radius,
             bordersize = 0,
             padding = 0,
@@ -322,6 +334,7 @@ function BluetoothDialog:updateLandscape()
     }
 end
 
+-- 构建对话框；竖屏为单栏：标题、当前连接、设备列表，底部"关闭 | 重新扫描"
 function BluetoothDialog:update()
     if self.landscape then
         return self:updateLandscape()
@@ -341,7 +354,7 @@ function BluetoothDialog:update()
         }
     end
 
-    -- Header
+    -- 标题栏：标题 + 关闭按钮
     local close_button = self:buildCloseButton()
     local title = TextWidget:new{
         text = _("Bluetooth connection"),
@@ -356,7 +369,7 @@ function BluetoothDialog:update()
         RightContainer:new{ dimen = header_dimen:copy(), close_button },
     }
 
-    -- Current connection
+    -- 当前连接
     local label_face = Font:getFace("cfont", 16)
     local row_face = Font:getFace("cfont", 20)
     local icon_size = Screen:scaleBySize(26)
@@ -378,14 +391,14 @@ function BluetoothDialog:update()
         }),
     }
 
-    -- Footer
+    -- 底部按钮：关闭 | 重新扫描（扫描中显示"扫描中"且不响应）
     local footer_h = Screen:scaleBySize(56)
     local half_w = math.floor(outer_w / 2)
     local function footerButton(text, callback)
         return Button:new{
             text = text,
             width = half_w - Size.line.medium,
-            -- stay clear of the rounded bottom corners
+            -- 上下各留出圆角半径，避免按钮遮住对话框底部圆角
             height = footer_h - 2 * radius,
             bordersize = 0,
             padding = 0,
@@ -417,7 +430,7 @@ function BluetoothDialog:update()
         },
     }
 
-    -- Body: device list or status text
+    -- 中间区域：设备列表，或无设备时的状态文字
     local body_h = outer_h - top:getSize().h - footer:getSize().h
     local body_dimen = Geom:new{ w = outer_w, h = body_h }
     local body
@@ -456,7 +469,9 @@ function BluetoothDialog:update()
     }
 end
 
--- opts.row_h overrides the row height, opts.hide_page_text leaves only the scrollbar as page indicator
+-- 分页设备列表：顶部"N 个结果"（及页码），下方设备行，右侧滚动条指示当前页
+-- 每页行数由可用高度 body_h 和行高决定
+-- opts.row_h 覆盖默认行高；opts.hide_page_text 为真时不显示页码文字，只用滚动条指示页码
 function BluetoothDialog:buildDeviceList(inner_w, body_h, side, label_face, row_face, icon_size, icon_gap, opts)
     opts = opts or {}
     local count_text = TextWidget:new{
@@ -511,6 +526,7 @@ function BluetoothDialog:buildDeviceList(inner_w, body_h, side, label_face, row_
     end
     local list_h = per_page * row_h
 
+    -- 滚动条：浅灰轨道，黑色滑块按当前页定位；只有一页时用空白占位
     local indicator
     if nb_pages > 1 then
         local thumb_h = math.max(Screen:scaleBySize(16), math.floor(list_h / nb_pages))
@@ -551,6 +567,7 @@ function BluetoothDialog:buildDeviceList(inner_w, body_h, side, label_face, row_
     }
 end
 
+-- 重建并刷新对话框区域
 function BluetoothDialog:refresh()
     self:update()
     UIManager:setDirty(self, function()
@@ -558,10 +575,12 @@ function BluetoothDialog:refresh()
     end)
 end
 
+-- 显示后开始扫描
 function BluetoothDialog:onShow()
     self:startScan()
 end
 
+-- 关闭时停止轮询和扫描
 function BluetoothDialog:onCloseWidget()
     UIManager:unschedule(self.poll_task)
     self.android.bluetoothStopScan()
@@ -575,6 +594,7 @@ function BluetoothDialog:onClose()
     return true
 end
 
+-- 点击对话框外部时关闭
 function BluetoothDialog:onTapClose(arg, ges)
     if ges.pos:notIntersectWith(self.frame.dimen) then
         self:onClose()
@@ -582,6 +602,7 @@ function BluetoothDialog:onTapClose(arg, ges)
     return true
 end
 
+-- 滑动翻页：上滑/左滑下一页，下滑/右滑上一页
 function BluetoothDialog:onSwipe(arg, ges)
     if not self.nb_pages or self.nb_pages <= 1 then return true end
     local page = self.page

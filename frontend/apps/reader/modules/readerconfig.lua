@@ -153,6 +153,7 @@ end
 
 function ReaderConfig:onTapShowConfigMenu()
     if self.activation_menu ~= "swipe" then
+        -- 定制：点击底部区域打开快捷菜单，而不是原底部设置菜单
         self.ui:handleEvent(Event:new("ShowQuickMenu"))
         return true
     end

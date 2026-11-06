@@ -196,11 +196,13 @@ function MenuItem:init()
         text = mandatory or "",
         face = self.info_face,
         bold = self.bold,
+        -- 定制：反色（当前项黑底）时右侧文字用白色
         fgcolor = self.inverted and Blitbuffer.COLOR_WHITE or (mandatory_dim and Blitbuffer.COLOR_DARK_GRAY or nil),
     }
     local mandatory_w = mandatory_widget:getWidth()
 
     local available_width = self.content_width - state_width - text_mandatory_padding - mandatory_w
+    -- 定制：反色时正文用白色
     local text_fgcolor
     if self.inverted then
         text_fgcolor = Blitbuffer.COLOR_WHITE
@@ -214,6 +216,7 @@ function MenuItem:init()
     -- because of some \n that would push the following text on another line that would
     -- overflow and not be displayed, or show a tofu char when displayed by TextWidget:
     -- get rid of any \n (which could be found in highlighted text in bookmarks).
+    -- 定制：keep_newlines 时保留换行（书签列表第一行显示日期，第二行起显示内容）
     local text = self.text
     if not self.keep_newlines or self.single_line then
         text = text:gsub("\n", " ")
@@ -474,6 +477,7 @@ function MenuItem:init()
     }
 end
 
+-- 定制：反色项包一层黑色圆角背景，非反色时原样返回
 function MenuItem:wrapInverted(widget)
     if not self.inverted then
         return widget
@@ -665,17 +669,18 @@ local Menu = FocusManager:extend{
     close_callback = nil,
     linesize = Size.line.medium,
     line_color = Blitbuffer.COLOR_DARK_GRAY,
-    -- set to true for a footer with a back button, a text label and up/down page buttons
+    -- 以下为定制参数（目录/书签列表使用）
+    -- 为真时使用导航底栏：左侧返回按钮和文字，右侧上/下翻页按钮
     nav_footer = nil,
-    -- function(menu) returning the footer label text (nav_footer only)
+    -- function(menu)，返回底栏文字（仅 nav_footer）
     nav_footer_text_func = nil,
-    -- set to true to hide the right-side "mandatory" text (page numbers...)
+    -- 为真时隐藏右侧的 mandatory 文字（页码等）
     no_mandatory = nil,
-    -- set to true to show the current item (item_table.current) as white text on black
+    -- 为真时当前项（item_table.current）显示为黑底白字
     highlight_current_inverted = nil,
-    -- set to true to keep line breaks in item text (multi-line items only)
+    -- 为真时保留条目文字中的换行（仅多行条目）
     keep_newlines = nil,
-    -- message (and optional hint below it) centered in the list area when there are no items
+    -- 列表为空时在列表区域居中显示的提示文字（及下方的次要提示）
     empty_text = nil,
     empty_subtext = nil,
 }
@@ -704,6 +709,7 @@ function Menu:_recalculateDimen(no_recalculate_dimen)
         top_height = self.title_bar:getHeight()
     end
     local bottom_height = 0
+    -- 定制：导航底栏高度为底栏本身加分隔线
     if self.nav_footer and self.page_info then
         bottom_height = self.page_info:getSize().h + Size.line.medium
     elseif self.page_return_arrow and self.page_info_text then
@@ -793,6 +799,7 @@ function Menu:init()
         chevron_left, chevron_right = chevron_right, chevron_left
         chevron_first, chevron_last = chevron_last, chevron_first
     end
+    -- 定制：导航底栏使用上/下箭头作为翻页按钮
     if self.nav_footer then
         self.page_info_left_chev = Button:new{
             icon = "chevron.up",
@@ -908,6 +915,7 @@ function Menu:init()
             buttons = buttons,
         },
     }
+    -- 定制：导航底栏布局，左侧返回按钮 + 文字，右侧上/下翻页按钮
     if self.nav_footer then
         self.nav_footer_back = Button:new{
             icon = chevron_left,
@@ -917,7 +925,7 @@ function Menu:init()
         }
         local content_h = math.max(self.nav_footer_back:getSize().h, self.page_info_left_chev:getSize().h,
                                    self.page_info_text:getSize().h)
-        -- Twice the height of a compact footer (separator line + padding + buttons).
+        -- 高度为紧凑底栏（分隔线 + 内边距 + 按钮）的两倍
         local footer_h = 2 * (content_h + Size.padding.button + Size.line.medium) - Size.line.medium
         local row_dimen = Geom:new{ w = self.inner_dimen.w, h = footer_h }
         self.nav_footer_left_group = HorizontalGroup:new{
@@ -983,6 +991,7 @@ function Menu:init()
 
     local header = self.no_title and VerticalSpan:new{ width = 0 } or self.title_bar
     local body = self.item_group
+    -- 定制：导航底栏上方加一条黑色分隔线
     local footer
     if self.nav_footer then
         footer = BottomContainer:new{
@@ -1027,7 +1036,7 @@ function Menu:init()
         dimen = self.inner_dimen:copy(),
         self.content_group,
     }
-    if not self.nav_footer then -- its slot would cover the footer back button
+    if not self.nav_footer then -- 定制：导航底栏不加返回上级箭头，否则它的位置会盖住底栏返回按钮
         table.insert(content, page_return)
     end
     table.insert(content, footer)
@@ -1154,6 +1163,7 @@ function Menu:updatePageInfo(select_number)
             self:moveFocusTo(x, y, is_focused and FocusManager.FORCED_FOCUS or FocusManager.FOCUS_ONLY_ON_NT)
         end
         -- update page information
+        -- 定制：底栏文字可自定义（如"第 3/20 章"、"12 条书签"）
         if self.nav_footer_text_func then
             self.page_info_text:setText(self.nav_footer_text_func(self))
         else
@@ -1180,7 +1190,7 @@ function Menu:updatePageInfo(select_number)
         self.page_info_text:disableWithoutDimming()
 
         if self.nav_footer then
-            -- keep the footer layout stable: arrows stay visible, just inactive
+            -- 定制：保持底栏布局不变，箭头不隐藏，只设为不可用
             self.page_info_left_chev:show()
             self.page_info_right_chev:show()
             self.page_info_left_chev:disableWithoutDimming()
@@ -1193,6 +1203,7 @@ function Menu:updatePageInfo(select_number)
         self.page_info_last_chev:hide()
         self.page_return_arrow:showHide(self.onReturn ~= nil)
     end
+    -- 底栏文字长度变化后重新计算左侧组的布局
     if self.nav_footer_left_group then
         self.nav_footer_left_group:resetLayout()
     end
@@ -1246,6 +1257,7 @@ function Menu:updateItems(select_number, no_recalculate_dimen)
             text_bgcolor = item.text_bgcolor,
             bidi_wrap_func = item.bidi_wrap_func,
             post_text = item.post_text,
+            -- 定制：no_mandatory 隐藏右侧文字；当前项可反色；可保留换行
             mandatory = not self.no_mandatory and item.mandatory or nil,
             mandatory_func = not self.no_mandatory and item.mandatory_func or nil,
             mandatory_dim = item.mandatory_dim or item.dim,
@@ -1277,6 +1289,7 @@ function Menu:updateItems(select_number, no_recalculate_dimen)
         -- this is for focus manager
         table.insert(self.layout, {item_tmp})
     end
+    -- 定制：列表为空时显示提示
     if #self.item_table == 0 and self.empty_text then
         table.insert(self.item_group, self:getEmptyStateWidget())
     end
@@ -1292,6 +1305,7 @@ function Menu:updateItems(select_number, no_recalculate_dimen)
     end)
 end
 
+-- 定制：空列表提示控件，主提示加粗，次要提示在下方居中换行显示
 function Menu:getEmptyStateWidget()
     local width = self.inner_dimen.w - 2 * Size.padding.fullscreen
     local group = VerticalGroup:new{

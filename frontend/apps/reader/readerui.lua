@@ -709,14 +709,20 @@ function ReaderUI:extendProvider(file, provider, is_provider_forced)
 end
 
 function ReaderUI:showReaderCoroutine(file, provider, seamless)
-    UIManager:show(InfoMessage:new{
-        text = T(_("Opening file '%1'."), BD.filepath(filemanagerutil.abbreviate(file))),
-        timeout = 0.0,
-        invisible = seamless,
-    })
+    -- 定制：打开书籍时显示全屏"正在打开…"页，替代原"正在打开文件"提示框
+    local opening_screen
+    if not seamless then
+        opening_screen = require("ui/widget/openingscreen"):new{}
+        UIManager:show(opening_screen)
+    end
     -- doShowReader might block for a long time, so force repaint here
     UIManager:forceRePaint()
     UIManager:nextTick(function()
+        if opening_screen then
+            -- 设为不可见后关闭，不会重绘下层（文件管理器），因此"正在打开…"一直留在屏幕上，直到阅读器绘制覆盖它
+            opening_screen.invisible = true
+            UIManager:close(opening_screen)
+        end
         logger.dbg("creating coroutine for showing reader")
         local co = coroutine.create(function()
             self:doShowReader(file, provider, seamless)

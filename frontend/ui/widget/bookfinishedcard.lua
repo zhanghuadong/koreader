@@ -1,6 +1,8 @@
 --[[--
-Card shown when the end of a book is reached: cover, title, author, chapter and page counts,
-reading stats, and a ticket-like stub with the reader's name, reading period and a QR code.
+读完一本书后显示的卡片（由 ReaderStatus:onEndOfBook 在"显示读完卡片"模式下弹出）。
+
+内容自上而下：标题"读完的第 N 本书" + 关闭按钮、封面、书名、作者、章数页数、
+累计时长/累计天数，以及票根样式的底部（读者名、阅读时段、二维码）。
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
@@ -31,13 +33,13 @@ local N_ = _.ngettext
 local T = require("ffi/util").template
 local Screen = Device.screen
 
--- Dashed separator between the card body and its stub, with half-circle notches cut into the
--- card border at both ends (painted just outside this widget, over the border).
+-- 卡片主体与票根之间的虚线分隔，两端在卡片边框上挖出半圆缺口（缺口画在本控件之外，覆盖在边框上）
 local TicketDivider = Widget:extend{
     width = nil,
-    border = nil, -- card border width
+    border = nil, -- 卡片边框宽度
 }
 
+-- 缺口半径固定，控件高度等于缺口外径
 function TicketDivider:init()
     self.notch_r = Screen:scaleBySize(9)
     self.dimen = Geom:new{ x = 0, y = 0, w = self.width, h = 2 * (self.notch_r + self.border) }
@@ -47,6 +49,7 @@ function TicketDivider:getSize()
     return self.dimen
 end
 
+-- 先在左右边框上各画一个白底黑边圆，再用白色矩形擦掉卡片外侧的一半，最后画中间的虚线
 function TicketDivider:paintTo(bb, x, y)
     local r = self.notch_r
     local b = self.border
@@ -56,10 +59,11 @@ function TicketDivider:paintTo(bb, x, y)
         bb:paintCircle(cx, cy, outer_r, Blitbuffer.COLOR_WHITE)
         bb:paintCircle(cx, cy, outer_r, Blitbuffer.COLOR_BLACK, b)
     end
-    -- keep only the inner halves of the notches
+    -- 只保留缺口在卡片内侧的半圆
     bb:paintRect(x - math.ceil(b / 2) - outer_r - 1, cy - outer_r - 1, outer_r + 1, 2 * outer_r + 3, Blitbuffer.COLOR_WHITE)
     bb:paintRect(x + self.dimen.w + math.floor(b / 2) + 1, cy - outer_r - 1, outer_r + 1, 2 * outer_r + 3, Blitbuffer.COLOR_WHITE)
 
+    -- 虚线：线段 6、间隔 4，两端避开缺口
     local dash = Screen:scaleBySize(6)
     local gap = Screen:scaleBySize(4)
     local thickness = Size.line.medium
@@ -74,11 +78,13 @@ end
 
 local BookFinishedCard = InputContainer:extend{
     ui = nil,
-    name = "end_document",
+    name = "end_document", -- 与原"读完"对话框同名，ReaderStatus 据此避免重复弹出
     covers_fullscreen = true,
 }
 
--- Reading stats that come from the Android host app; placeholders until that interface is available.
+-- 阅读统计数据（已读本数、累计时长、累计天数、用户名、阅读时段、二维码内容）
+-- 由 Android 宿主应用提供，接口完成前先返回占位值
+-- TODO: 接入 Android 阅读统计接口
 function BookFinishedCard:getReadingSummary()
     return {
         book_count = "--",
@@ -90,6 +96,7 @@ function BookFinishedCard:getReadingSummary()
     }
 end
 
+-- 章数：只统计目录中第一级条目
 function BookFinishedCard:getChapterCount()
     local toc = self.ui.toc
     if not toc then return 0 end
@@ -103,6 +110,7 @@ function BookFinishedCard:getChapterCount()
     return count
 end
 
+-- 构建卡片：宽度为屏幕短边的 85%，白色全屏背景居中显示；返回键或点击卡片外部关闭
 function BookFinishedCard:init()
     local screen_w, screen_h = Screen:getWidth(), Screen:getHeight()
     if Device:hasKeys() then
@@ -122,6 +130,7 @@ function BookFinishedCard:init()
     local side = Screen:scaleBySize(22)
     local inner_w = card_w - 2 * border - 2 * side
 
+    -- 文字控件快捷构造，默认最大宽度为卡片内容宽度
     local function text(str, size, bold, max_w)
         return TextWidget:new{
             text = str,
@@ -130,6 +139,7 @@ function BookFinishedCard:init()
             max_width = max_w or inner_w,
         }
     end
+    -- 在卡片内水平居中
     local function centered(widget)
         return CenterContainer:new{
             dimen = Geom:new{ w = card_w - 2 * border, h = widget:getSize().h },
@@ -137,7 +147,7 @@ function BookFinishedCard:init()
         }
     end
 
-    -- Header
+    -- 标题栏："读完的第 N 本书" + 关闭按钮
     local close_size = Screen:scaleBySize(28)
     local close_button = Button:new{
         icon = "close",
@@ -156,7 +166,7 @@ function BookFinishedCard:init()
         RightContainer:new{ dimen = header_dimen:copy(), close_button },
     }
 
-    -- Book info
+    -- 书籍信息：书名、作者（多位作者用顿号连接）、章数 · 页数（无目录时只显示页数）
     local book_title = text(props.display_title or "", 24, true)
     local authors = props.authors and props.authors:gsub("\n", "、") or ""
     local author = text(authors, 20, true)
@@ -165,8 +175,9 @@ function BookFinishedCard:init()
     local counts = text(chapters > 0 and T(_("%1 chapters · %2 pages"), chapters, pages)
         or T(N_("1 page", "%1 pages", pages), pages), 18, true)
 
-    -- Stats
+    -- 统计区：累计时长 | 累计天数，中间竖线分隔
     local half_w = math.floor(inner_w / 2)
+    -- 单项统计：上方数值，下方标签，在半宽内居中
     local function stat(value, label)
         local group = VerticalGroup:new{
             align = "center",
@@ -192,9 +203,10 @@ function BookFinishedCard:init()
         days_stat,
     }
 
-    -- Stub
+    -- 票根：左侧读者名、阅读时段、提示文字，右侧二维码
     local qr_size = Screen:scaleBySize(110)
     local qr = QRWidget:new{ text = summary.qr_text, width = qr_size, height = qr_size }
+    -- 二维码生成失败时用同尺寸空白占位，布局不变
     local qr_widget = qr.image and qr or Widget:new{ dimen = Geom:new{ w = qr_size, h = qr_size } }
     self.qr_widget = qr.image and qr
     local stub_text_w = inner_w - qr_size - Screen:scaleBySize(12)
@@ -217,17 +229,18 @@ function BookFinishedCard:init()
     local divider = TicketDivider:new{ width = card_w - 2 * border, border = border }
     local function spacer(n) return VerticalSpan:new{ width = Screen:scaleBySize(n) } end
 
-    -- Cover, sized to whatever height is left so the card fits on screen
+    -- 封面：先排好其余内容，封面高度取剩余可用高度（不超过屏幕 30%），保证整张卡片能放进屏幕
     local rest = VerticalGroup:new{
         align = "center",
         spacer(20), centered(header), spacer(18),
-        -- the cover is inserted here, at index 4
+        -- 封面插入在这里，即第 4 个位置
         spacer(18), centered(book_title), spacer(6), centered(author),
         spacer(14), centered(counts), spacer(26), centered(stats), spacer(22),
         divider,
         spacer(16), centered(stub), spacer(20),
     }
     local cover_h = math.min(math.floor(screen_h * 0.3), math.floor(screen_h * 0.96) - rest:getSize().h - 2 * border)
+    -- 剩余高度太小（小于 60）时不显示封面
     local cover = self.ui.bookinfo and cover_h >= Screen:scaleBySize(60)
         and self.ui.bookinfo:getCoverImage(self.ui.document)
     if cover then
@@ -244,7 +257,7 @@ function BookFinishedCard:init()
             margin = 0,
             self.cover_widget,
         }))
-        -- measuring the card above cached the layout without the cover
+        -- 上面测量高度时已缓存了不含封面的布局，插入封面后必须重置，否则绘制时会越界崩溃
         rest:resetLayout()
     end
 
@@ -268,10 +281,12 @@ function BookFinishedCard:init()
     }
 end
 
+-- 显示时全刷，消除墨水屏残影
 function BookFinishedCard:onShow()
     UIManager:setDirty(self, "full")
 end
 
+-- 关闭时释放封面和二维码图像，并全刷恢复阅读页面
 function BookFinishedCard:onCloseWidget()
     if self.cover_widget then
         self.cover_widget:free()
@@ -287,6 +302,7 @@ function BookFinishedCard:onClose()
     return true
 end
 
+-- 点击卡片外部时关闭
 function BookFinishedCard:onTapClose(arg, ges)
     if ges.pos:notIntersectWith(self.card.dimen) then
         self:onClose()

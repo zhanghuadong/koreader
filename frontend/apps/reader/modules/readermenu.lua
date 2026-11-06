@@ -483,12 +483,14 @@ end
 
 function ReaderMenu:onSwipeShowMenu(ges)
     if self.activation_menu ~= "tap" and ges.direction == "south" then
+        -- 定制：从顶部下滑打开下拉面板，而不是原顶部菜单
         self:onShowPullDownPanel()
         self.ui:handleEvent(Event:new("HandledAsSwipe")) -- cancel any pan scroll made
         return true
     end
 end
 
+-- 定制：打开下拉面板（亮度、色温、快捷操作），已打开时不重复打开
 function ReaderMenu:onShowPullDownPanel()
     if self.pulldown_panel then return true end
     local PullDownPanel = require("ui/widget/pulldownpanel")
@@ -502,6 +504,7 @@ function ReaderMenu:onShowPullDownPanel()
     return true
 end
 
+-- 定制：打开快捷菜单，已打开时不重复打开；先关闭按键选择高亮
 function ReaderMenu:onShowQuickMenu()
     if self.quick_menu then return true end
     self.ui.keyselection:stopHighlightIndicator(true)
@@ -518,11 +521,13 @@ end
 
 function ReaderMenu:onTapShowMenu(ges)
     if self.activation_menu ~= "swipe" then
+        -- 定制：点击顶部区域打开快捷菜单
         return self:onShowQuickMenu()
     end
 end
 
 function ReaderMenu:onPressMenu()
+    -- 定制：菜单键打开快捷菜单
     return self:onShowQuickMenu()
 end
 

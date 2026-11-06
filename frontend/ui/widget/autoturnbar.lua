@@ -1,6 +1,6 @@
 --[[--
-Status bar shown by ReaderFooter while autoturn is running:
-clock on the left, the interval as a black pill in the middle, book progress on the right.
+自动翻页时替换底部状态栏的控件（由 ReaderFooter 显示）：
+左侧时间，中间黑色胶囊显示翻页间隔和播放三角，右侧阅读进度百分比。
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
@@ -12,12 +12,13 @@ local Widget = require("ui/widget/widget")
 local Screen = Device.screen
 
 local AutoTurnBar = Widget:extend{
-    width = nil,
-    seconds = 0,
-    clock = "",
-    percent = nil, -- 0..1
+    width = nil,   -- 状态栏宽度
+    seconds = 0,   -- 翻页间隔（秒）
+    clock = "",    -- 已格式化的时间文字
+    percent = nil, -- 阅读进度 0..1
 }
 
+-- 把秒数格式化为 "20s"、"2m"、"1m30s"（自动翻页弹窗的刻度也复用此函数）
 function AutoTurnBar.formatInterval(sec)
     if sec < 60 then
         return string.format("%ds", sec)
@@ -27,6 +28,7 @@ function AutoTurnBar.formatInterval(sec)
     return string.format("%dm%ds", math.floor(sec / 60), sec % 60)
 end
 
+-- 创建三段文字并计算胶囊尺寸
 function AutoTurnBar:init()
     self.height = Screen:scaleBySize(50)
     self.margin = Screen:scaleBySize(16)
@@ -55,10 +57,12 @@ function AutoTurnBar:getSize()
     return self.dimen
 end
 
+-- 绘制：白底 → 左侧时间 / 右侧百分比 → 中间黑色圆角胶囊（间隔文字 + 白色三角）
 function AutoTurnBar:paintTo(bb, x, y)
     self.dimen.x, self.dimen.y = x, y
     bb:paintRect(x, y, self.width, self.height, Blitbuffer.COLOR_WHITE)
 
+    -- 在 wx 处绘制控件，并在状态栏内垂直居中
     local function paintCentered(widget, wx)
         widget:paintTo(bb, wx, y + math.floor((self.height - widget:getSize().h) / 2))
     end
@@ -71,7 +75,7 @@ function AutoTurnBar:paintTo(bb, x, y)
     local tx = px + self.pill_pad
     self.pill_text:paintTo(bb, tx, py + math.floor((self.pill_h - self.pill_text:getSize().h) / 2))
 
-    -- play triangle, one column at a time
+    -- 播放三角：逐列绘制，每列向内收缩一像素
     local tri_x = tx + self.pill_text:getSize().w + self.pill_gap
     local tri_h = self.triangle_w * 2
     local tri_y = py + math.floor((self.pill_h - tri_h) / 2)
@@ -81,6 +85,7 @@ function AutoTurnBar:paintTo(bb, x, y)
     end
 end
 
+-- 释放文字控件占用的资源
 function AutoTurnBar:free()
     self.clock_text:free()
     self.percent_text:free()

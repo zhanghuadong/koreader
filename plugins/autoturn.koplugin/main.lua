@@ -8,7 +8,7 @@ local time = require("ui/time")
 local _ = require("gettext")
 local T = require("ffi/util").template
 
-local DEFAULT_INTERVAL = 20
+local DEFAULT_INTERVAL = 20 -- 定制：未设置间隔时的默认翻页间隔（秒）
 
 local AutoTurn = WidgetContainer:extend{
     name = "autoturn",
@@ -66,6 +66,7 @@ function AutoTurn:_start(quiet)
         PluginShare.pause_auto_suspend = true
         self.last_action_time = time_since_boot
         self:_schedule()
+        -- 定制：quiet 时不弹出提示（状态栏已显示自动翻页状态）
         if quiet then return end
 
         local text
@@ -98,11 +99,12 @@ function AutoTurn:init()
     self:_start(true)
     if self:_enabled() then
         self.onResume = self._onResume
-        -- the document isn't laid out yet: no relayout needed
+        -- 定制：打开书时自动翻页已开启，则显示自动翻页状态栏；此时文档尚未排版，无需重新排版
         self.ui.view.footer:setAutoTurnBar(self.autoturn_sec, true)
     end
 end
 
+-- 定制：按当前状态显示或恢复自动翻页状态栏
 function AutoTurn:updateFooterBar()
     self.ui.view.footer:setAutoTurnBar(self:_enabled() and self.autoturn_sec or nil)
 end
@@ -135,14 +137,19 @@ function AutoTurn:_onResume()
     self:_start(true)
 end
 
+-- 定制：以下为供快捷菜单、翻页速度弹窗调用的接口
+
+-- 自动翻页是否正在运行
 function AutoTurn:isActive()
     return self:_enabled()
 end
 
+-- 当前翻页间隔（秒），未设置时返回默认值
 function AutoTurn:getInterval()
     return self.autoturn_sec > 0 and self.autoturn_sec or DEFAULT_INTERVAL
 end
 
+-- 设置翻页间隔并保存；运行中则按新间隔重新计时
 function AutoTurn:setInterval(sec)
     self.autoturn_sec = sec
     G_reader_settings:saveSetting("autoturn_timeout_seconds", sec)
@@ -153,6 +160,7 @@ function AutoTurn:setInterval(sec)
     self:updateFooterBar()
 end
 
+-- 开启自动翻页（使用当前或默认间隔），并显示自动翻页状态栏
 function AutoTurn:enable()
     self.autoturn_sec = self:getInterval()
     G_reader_settings:saveSetting("autoturn_timeout_seconds", self.autoturn_sec)
@@ -164,6 +172,7 @@ function AutoTurn:enable()
     self:updateFooterBar()
 end
 
+-- 停止自动翻页，并恢复原状态栏
 function AutoTurn:disable()
     self.enabled = false
     G_reader_settings:makeFalse("autoturn_enabled")
@@ -172,6 +181,7 @@ function AutoTurn:disable()
     self:updateFooterBar()
 end
 
+-- 切换自动翻页开关
 function AutoTurn:onToggleAutoTurn()
     if self:_enabled() then
         self:disable()
@@ -181,7 +191,7 @@ function AutoTurn:onToggleAutoTurn()
     return true
 end
 
--- Starts autoturn if needed, then shows the speed popup above the status bar.
+-- 未开启时先开启自动翻页，再在状态栏上方弹出翻页速度弹窗
 function AutoTurn:onShowAutoTurnDialog()
     if not self:_enabled() then
         self:enable()
@@ -225,7 +235,7 @@ function AutoTurn:addToMainMenu(menu_items)
                     self:_unschedule()
                     menu:updateItems()
                     self.onResume = nil
-                    self:updateFooterBar()
+                    self:updateFooterBar() -- 定制：同步状态栏
                 end,
                 ok_always_enabled = true,
                 callback = function(t)
@@ -237,7 +247,7 @@ function AutoTurn:addToMainMenu(menu_items)
                     self:_start()
                     menu:updateItems()
                     self.onResume = self._onResume
-                    self:updateFooterBar()
+                    self:updateFooterBar() -- 定制：同步状态栏
                 end,
             }
             UIManager:show(autoturn_spin)

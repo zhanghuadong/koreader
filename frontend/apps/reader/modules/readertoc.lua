@@ -67,7 +67,7 @@ function ReaderToc:onGesture() end
 -- end
 
 function ReaderToc:getTitle()
-    local title = _("Chapters")
+    local title = _("Chapters") -- 定制：标题"目录"统一为"章节"
     -- Handmade ToC has precedence over alternative ToC
     if self.ui.handmade:isHandmadeTocEnabled() then
         title = title .. " " .. self.ui.handmade.custom_toc_symbol
@@ -887,6 +887,8 @@ function ReaderToc:onShowToc()
     --       because we inflate the state Button's width on the left, mainly to give it a larger tap zone.
     --       This yields *slightly* better alignment between state & mandatory (in terms of effective margins).
     local button_size = self.expand_button:getSize()
+    -- 定制：顶部为"章节 | 书签"标签栏，点击"书签"切换到书签列表，长按"章节"打开列表设置，
+    -- 右侧定位按钮跳回当前阅读章节
     local nav_title_bar = ReaderNavTitleBar:new{
         active_tab = "toc",
         tab_callback = function()
@@ -905,6 +907,7 @@ function ReaderToc:onShowToc()
         title = self:getTitle(),
         subtitle = self.search_string and T(_("Query: %1"), self.search_string) or "",
         custom_title_bar = nav_title_bar,
+        -- 定制：导航底栏显示"第 当前/总数 章"，隐藏页码，当前章节黑底白字
         nav_footer = true,
         nav_footer_text_func = function()
             local total = #self.toc
@@ -1085,6 +1088,7 @@ function ReaderToc:onShowToc()
     end
 
     toc_menu.show_parent = menu_container
+    -- 定位按钮创建时容器还不存在，这里补上 show_parent，使按钮点击反馈能正确刷新
     if nav_title_bar.right_button then
         nav_title_bar.right_button.show_parent = menu_container
     end
@@ -1118,7 +1122,7 @@ function ReaderToc:onShowToc()
     return true
 end
 
--- Scroll the chapter list back to the chapter being read, expanding its parents.
+-- 定制：章节列表滚动回当前阅读的章节，并展开其上级章节（搜索结果中不展开）
 function ReaderToc:locateCurrentChapter()
     if not self.toc_menu then return end
     self:updateCurrentNode()

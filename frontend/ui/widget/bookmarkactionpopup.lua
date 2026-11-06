@@ -1,8 +1,7 @@
 --[[--
-Small action popup shown when holding an entry in the bookmark list.
+书签操作小弹窗：在书签列表中长按某一条时弹出。
 
-Shows a title with a close button, a one-line preview of the bookmark,
-and a list of icon + label actions separated by lines.
+包含标题和关闭按钮、书签内容的单行预览，以及若干"图标 + 文字"操作行（跳转、删除等），行间有分隔线。
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
@@ -29,16 +28,18 @@ local VerticalSpan = require("ui/widget/verticalspan")
 local util = require("util")
 local Screen = Device.screen
 
+-- 单个操作行：左侧图标 + 文字，整行可点击
 local ActionRow = InputContainer:extend{
-    icon = nil,
-    text = nil,
-    width = nil,
-    icon_size = nil,
-    icon_gap = nil,
-    face = nil,
-    callback = nil,
+    icon = nil,      -- 图标名
+    text = nil,      -- 文字
+    width = nil,     -- 行宽
+    icon_size = nil, -- 图标边长
+    icon_gap = nil,  -- 图标与文字间距
+    face = nil,      -- 字体
+    callback = nil,  -- 点击回调
 }
 
+-- 构建行布局并注册整行点击手势
 function ActionRow:init()
     local row_padding = Screen:scaleBySize(14)
     local label = TextWidget:new{
@@ -79,13 +80,14 @@ function ActionRow:onTapAction()
 end
 
 local BookmarkActionPopup = InputContainer:extend{
-    title = nil,
-    text = nil,
-    -- list of { icon = "...", text = "...", callback = function() end }
+    title = nil, -- 标题
+    text = nil,  -- 预览文字（书签笔记或原文）
+    -- 操作列表，每项为 { icon = "...", text = "...", callback = function() end }
     actions = nil,
-    width = nil,
+    width = nil, -- 弹窗宽度，默认屏幕宽度的 82%
 }
 
+-- 构建标题栏、预览、粗分隔线和操作行（第二行起前面加缩进的细分隔线）；返回键或点击外部关闭
 function BookmarkActionPopup:init()
     self.width = self.width or math.floor(Screen:getWidth() * 0.82)
     local border = Size.border.window
@@ -162,6 +164,7 @@ function BookmarkActionPopup:init()
             icon_gap = icon_gap,
             face = action_face,
             callback = function()
+                -- 先关闭弹窗再执行操作，操作内部可能会刷新或关闭书签列表
                 UIManager:close(self)
                 if action.callback then
                     action.callback()
@@ -210,6 +213,7 @@ function BookmarkActionPopup:onClose()
     return true
 end
 
+-- 点击弹窗外部时关闭
 function BookmarkActionPopup:onTapClose(arg, ges)
     if ges.pos:notIntersectWith(self.frame.dimen) then
         self:onClose()

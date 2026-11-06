@@ -1,9 +1,8 @@
 --[[--
-Tab header shared by the reader chapter list and the bookmark list.
+目录列表和书签列表共用的标签页标题栏。
 
-Shows the "Chapters" and "Bookmarks" tabs, with an underline below the active one,
-and an optional icon button on the right. It replaces TitleBar in Menu, so it
-implements the TitleBar methods Menu relies on.
+显示"章节"和"书签"两个标签，当前标签下方有下划线，右侧可带一个图标按钮（如定位当前章节）。
+它替代 Menu 中的 TitleBar，因此实现了 Menu 会调用的 TitleBar 方法。
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
@@ -28,14 +27,16 @@ local Screen = Device.screen
 
 local DGENERIC_ICON_SIZE = G_defaults:readSetting("DGENERIC_ICON_SIZE")
 
+-- 单个标签：粗体文字，选中时下方显示黑色下划线
 local NavTab = InputContainer:extend{
     text = nil,
     face = nil,
-    active = false,
-    callback = nil,
-    hold_callback = nil,
+    active = false,      -- 是否为当前标签
+    callback = nil,      -- 点击回调
+    hold_callback = nil, -- 长按回调
 }
 
+-- 构建文字和下划线（未选中时用等高空白占位，保证两个标签对齐），注册点击和长按手势
 function NavTab:init()
     local label = TextWidget:new{
         text = self.text,
@@ -93,23 +94,25 @@ end
 
 local ReaderNavTitleBar = OverlapGroup:extend{
     width = nil,
-    -- "toc" or "bookmark"
+    -- 当前标签："toc"（目录）或 "bookmark"（书签）
     active_tab = "toc",
-    -- called with the tab id ("toc" or "bookmark") when an inactive tab is tapped
+    -- 点击未选中的标签时回调，参数为标签 id（"toc" 或 "bookmark"）
     tab_callback = nil,
-    -- called when the active tab is held (opens the list options dialog)
+    -- 长按当前标签时回调（打开列表设置对话框）
     hold_callback = nil,
-    right_icon = nil,
-    right_icon_tap_callback = nil,
+    right_icon = nil,              -- 右侧图标名，为空则不显示按钮
+    right_icon_tap_callback = nil, -- 右侧图标点击回调
     show_parent = nil,
 }
 
+-- 构建左侧标签组和右侧图标按钮，计算标题栏高度
 function ReaderNavTitleBar:init()
     self.width = self.width or Screen:getWidth()
     local face = Font:getFace("smalltfont")
     local side_padding = Size.padding.fullscreen
     local top_padding = Size.padding.large
 
+    -- 创建标签：未选中的标签响应点击（切换列表），当前标签响应长按（列表设置）
     local function makeTab(tab_id, text)
         local is_active = self.active_tab == tab_id
         return NavTab:new{
@@ -180,16 +183,18 @@ function ReaderNavTitleBar:init()
     OverlapGroup.init(self)
 end
 
+-- Menu 用来计算列表区域高度
 function ReaderNavTitleBar:getHeight()
     return self.titlebar_height
 end
 
--- The tabs carry the title; Menu still calls these when switching item tables.
+-- 标签本身就是标题，以下方法留空；Menu 切换列表数据时仍会调用它们
 function ReaderNavTitleBar:setTitle() end
 function ReaderNavTitleBar:setSubTitle() end
 function ReaderNavTitleBar:setLeftIcon() end
 function ReaderNavTitleBar:setRightIcon() end
 
+-- 按键焦点导航布局：只有右侧图标按钮可获得焦点
 function ReaderNavTitleBar:generateHorizontalLayout()
     if self.right_button then
         return { { self.right_button } }

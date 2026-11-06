@@ -712,7 +712,7 @@ function ReaderBookmark:onShowBookmark()
         table.sort(item_table, sort_func)
     end
 
-    -- Each entry shows a date line and up to two lines of text.
+    -- 定制：每页固定 5 条，每条显示一行日期和最多两行内容
     local items_per_page = 5
     local items_font_size = G_reader_settings:readSetting("bookmarks_items_font_size") or Menu.getItemFontSize(14)
 
@@ -720,6 +720,7 @@ function ReaderBookmark:onShowBookmark()
         dimen = Screen:getSize(),
         covers_fullscreen = true, -- hint for UIManager:_repaint()
     }
+    -- 定制：顶部为"章节 | 书签"标签栏，点击"章节"切换到目录列表，长按"书签"打开列表设置
     local nav_title_bar = ReaderNavTitleBar:new{
         active_tab = "bookmark",
         tab_callback = function()
@@ -734,6 +735,7 @@ function ReaderBookmark:onShowBookmark()
         title = T(_("Bookmarks (%1)"), #item_table),
         item_table = item_table,
         custom_title_bar = nav_title_bar,
+        -- 定制：导航底栏显示书签总数（多选时显示已选数量），列表为空时显示提示
         nav_footer = true,
         nav_footer_text_func = function(menu)
             if menu.select_count then
@@ -792,6 +794,7 @@ function ReaderBookmark:onShowBookmark()
     end
 
     function bm_menu:onMenuHold(item)
+        -- 定制：多选模式下长按仍显示详情，否则弹出书签操作小弹窗（跳转、删除）
         if self.select_count then
             bookmark:showBookmarkDetails(item)
         else
@@ -1153,6 +1156,8 @@ function ReaderBookmark:getBookmarkItemIndex(item)
     return item.idx
 end
 
+-- 定制：书签列表条目文字为两部分：第一行日期（"MM/DD HH:MM"），第二行起为内容
+-- 内容：笔记模式显示笔记；无文字的页面书签显示"第 N 页"；其他显示原文（"全部"模式下附加笔记）
 function ReaderBookmark:getBookmarkItemText(item)
     local text
     if item.type == "note" and self.items_text == "note" then
@@ -1166,7 +1171,7 @@ function ReaderBookmark:getBookmarkItemText(item)
         end
     end
     text = text:gsub("%s*\n%s*", " ")
-    -- "YYYY-MM-DD HH:MM:SS" is shown as "MM/DD HH:MM"
+    -- 内容中的换行合并为空格；日期 "YYYY-MM-DD HH:MM:SS" 显示为 "MM/DD HH:MM"
     local datetime = item.datetime or ""
     local month, day, hour_min = datetime:match("^%d+%-(%d+)%-(%d+) (%d+:%d+)")
     local date_line = month and string.format("%s/%s %s", month, day, hour_min) or datetime
@@ -1204,6 +1209,8 @@ function ReaderBookmark:getBookmarkDetailsText(bookmark, book)
     return TextBoxWidget.PTF_HEADER .. table.concat(t, "\n")
 end
 
+-- 定制：长按书签弹出的操作小弹窗；预览依次取笔记、原文、"第 N 页"
+-- 操作："跳转"（记录当前位置后跳转并关闭列表）、"删除"（文本选择模式下不提供）
 function ReaderBookmark:showBookmarkActions(item)
     local bm_menu = self.bookmark_menu[1]
     local preview = item.note

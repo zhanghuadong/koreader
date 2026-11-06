@@ -1,5 +1,8 @@
 --[[--
-Full-screen "Reading options" page opened from the reader quick menu (More > Advanced).
+全屏"阅读选项"页，从阅读器快捷菜单的 更多 > 高级 打开。
+
+顶部为时间 + 电量状态行和带返回按钮的标题，下面是选项列表：
+阅读方向、对齐方式（单选弹窗），断字、抗锯齿、EPUB 图片、灰度图片、隐藏状态栏（开关）。
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
@@ -30,10 +33,12 @@ local _ = require("gettext")
 local C_ = _.pgettext
 local Screen = Device.screen
 
+-- 开关控件（仅显示，点击由所在行处理）：开为黑底白钮靠右，关为白底黑边黑钮靠左
 local ToggleSwitch = Widget:extend{
     checked = false,
 }
 
+-- 固定尺寸 54×30
 function ToggleSwitch:init()
     self.dimen = Geom:new{ x = 0, y = 0, w = Screen:scaleBySize(54), h = Screen:scaleBySize(30) }
 end
@@ -42,6 +47,7 @@ function ToggleSwitch:getSize()
     return self.dimen
 end
 
+-- 绘制胶囊形底座和圆形滑钮
 function ToggleSwitch:paintTo(bb, x, y)
     self.dimen.x, self.dimen.y = x, y
     local w, h = self.dimen.w, self.dimen.h
@@ -57,12 +63,14 @@ function ToggleSwitch:paintTo(bb, x, y)
     end
 end
 
+-- 可点击的选项行容器，子控件为行的显示内容
 local OptionRow = InputContainer:extend{
     width = nil,
     height = nil,
-    callback = nil,
+    callback = nil, -- 点击回调
 }
 
+-- 注册整行点击手势
 function OptionRow:init()
     self.dimen = Geom:new{ x = 0, y = 0, w = self.width, h = self.height }
     self.ges_events = {
@@ -80,6 +88,7 @@ function OptionRow:onTapRow()
     return true
 end
 
+-- 阅读方向选项：竖屏、横屏、反向竖屏、反向横屏
 local ORIENTATIONS = {
     { value = Screen.DEVICE_ROTATED_UPRIGHT, icon = "options.orient.portrait",
       text = C_("Orientation", "Portrait") },
@@ -91,7 +100,7 @@ local ORIENTATIONS = {
       text = C_("Orientation", "Inverted landscape") },
 }
 
--- value is the typeset_text_align setting, nil keeps the book's own alignment
+-- 对齐方式选项：value 为 typeset_text_align 设置值，nil 表示保持书籍自带的对齐方式
 local ALIGNMENTS = {
     { value = nil, icon = "options.align.auto", text = C_("Alignment", "Auto") },
     { value = "left", icon = "options.align.left", text = C_("Alignment", "Left") },
@@ -100,6 +109,7 @@ local ALIGNMENTS = {
     { value = "justify", icon = "options.align.justify", text = C_("Alignment", "Justify") },
 }
 
+-- 返回选项列表中 value 对应的显示文字
 local function choiceText(choices, value)
     for _, choice in ipairs(choices) do
         if choice.value == value then
@@ -114,6 +124,7 @@ local ReaderOptionsPage = InputContainer:extend{
     covers_fullscreen = true,
 }
 
+-- 返回键关闭页面
 function ReaderOptionsPage:init()
     if Device:hasKeys() then
         self.key_events.Close = { { Device.input.group.Back } }
@@ -121,16 +132,19 @@ function ReaderOptionsPage:init()
     self:update()
 end
 
+-- 生成选项列表。每项为 { text, value（右侧文字）或 checked（开关状态）, callback }
+-- 对齐、断字、抗锯齿、EPUB 图片只对流式排版文档（EPUB 等）显示
 function ReaderOptionsPage:getOptions()
     local ui = self.ui
     local options = {}
+    -- 阅读方向
     table.insert(options, {
         text = _("Reading orientation"),
         value = choiceText(ORIENTATIONS, Screen:getRotationMode()),
         callback = function()
             self:showChoices(_("Reading orientation"), ORIENTATIONS, Screen:getRotationMode(), function(mode)
                 if mode ~= Screen:getRotationMode() then
-                    -- the page would need a relayout for the new screen size: close it first
+                    -- 本页面不会按新屏幕尺寸重新布局，所以先关闭再旋转
                     self:onClose()
                     UIManager:broadcastEvent(Event:new("SetRotationMode", mode))
                 end
@@ -138,6 +152,7 @@ function ReaderOptionsPage:getOptions()
         end,
     })
     if ui.rolling then
+        -- 对齐方式：通过 ReaderStyleTweak 生成的全局 CSS 生效
         local align = G_reader_settings:readSetting("typeset_text_align")
         table.insert(options, {
             text = _("Alignment"),
@@ -150,6 +165,7 @@ function ReaderOptionsPage:getOptions()
                 end)
             end,
         })
+        -- 断字
         table.insert(options, {
             text = C_("Reading options", "Enable hyphenation"),
             checked = ui.typography.hyphenation,
@@ -162,6 +178,7 @@ function ReaderOptionsPage:getOptions()
                 self:refresh()
             end,
         })
+        -- 文字抗锯齿（全局设置）
         table.insert(options, {
             text = _("Anti-aliased text"),
             checked = G_reader_settings:nilOrTrue("cre_font_antialiasing"),
@@ -172,6 +189,7 @@ function ReaderOptionsPage:getOptions()
                 self:refresh()
             end,
         })
+        -- 显示 EPUB 图片（关闭时通过 CSS 隐藏图片）
         table.insert(options, {
             text = _("EPUB images"),
             checked = not G_reader_settings:isTrue("typeset_hide_images"),
@@ -182,6 +200,7 @@ function ReaderOptionsPage:getOptions()
             end,
         })
     end
+    -- 灰度图片（关闭彩色渲染）
     table.insert(options, {
         text = _("Grayscale images"),
         checked = not Screen:isColorEnabled(),
@@ -194,6 +213,7 @@ function ReaderOptionsPage:getOptions()
             self:refresh()
         end,
     })
+    -- 隐藏状态栏：隐藏前记住原显示模式，取消隐藏时恢复（没有记录时恢复为页码进度）
     local footer = ui.view.footer
     if not footer.settings.disabled then
         table.insert(options, {
@@ -211,7 +231,7 @@ function ReaderOptionsPage:getOptions()
                     footer:applyFooterMode(mode)
                 end
                 G_reader_settings:saveSetting("reader_footer_mode", footer.mode)
-                -- recompute only: we cover the reader, it gets repainted when we close
+                -- 只重新计算：本页面覆盖着阅读页，关闭后阅读页会自然重绘
                 footer:onUpdateFooter()
                 footer:rescheduleFooterAutoRefreshIfNeeded()
                 self:refresh()
@@ -221,6 +241,7 @@ function ReaderOptionsPage:getOptions()
     return options
 end
 
+-- 弹出单选弹窗
 function ReaderOptionsPage:showChoices(title, choices, selected, callback)
     UIManager:show(OptionChoicePopup:new{
         title = title,
@@ -230,7 +251,8 @@ function ReaderOptionsPage:showChoices(title, choices, selected, callback)
     })
 end
 
--- scale enlarges the text and the battery (1 by default)
+-- 状态行：左侧时间，右侧电量百分比和电池图标；下拉面板也复用此函数
+-- width 为行宽，side 为左右边距，scale 为文字和电池的放大倍数（默认 1）
 function ReaderOptionsPage:buildStatusRow(width, side, scale)
     scale = scale or 1
     local face = Font:getFace("cfont", math.floor(17 * scale))
@@ -251,6 +273,7 @@ function ReaderOptionsPage:buildStatusRow(width, side, scale)
         },
     }
     if Device:hasBattery() then
+        -- 电池图标：细边框外壳，内部按电量比例填充黑色，右侧加一小段正极
         local capacity = Device:getPowerDevice():getCapacity()
         local battery_w, battery_h = Screen:scaleBySize(26 * scale), Screen:scaleBySize(13 * scale)
         local fill_w = math.floor((battery_w - 4 * Size.border.thin) * capacity / 100)
@@ -287,6 +310,7 @@ function ReaderOptionsPage:buildStatusRow(width, side, scale)
     return row
 end
 
+-- 构建整页：状态行、标题行（左侧返回按钮）、选项行（行间细分隔线，右侧为开关或"当前值 >"）
 function ReaderOptionsPage:update()
     local width, height = Screen:getWidth(), Screen:getHeight()
     local side = Screen:scaleBySize(18)
@@ -388,6 +412,7 @@ function ReaderOptionsPage:update()
     }
 end
 
+-- 选项变化后重建并刷新整页
 function ReaderOptionsPage:refresh()
     self:update()
     UIManager:setDirty(self, "ui")

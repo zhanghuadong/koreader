@@ -2498,6 +2498,9 @@ local function run(android_app_state)
         end)
     end
 
+    -- 定制：蓝牙相关接口，通过 JNI 调用 MainActivity.kt 中的对应方法（具体实现在 BluetoothHelper.kt）
+
+    -- 打开系统蓝牙设置页
     android.openBluetoothSettings = function()
         android.DEBUG("open android bluetooth settings")
         JNI:context(android.app.activity.vm, function(jni)
@@ -2509,25 +2512,29 @@ local function run(android_app_state)
         end)
     end
 
+    -- 开始扫描蓝牙设备，返回是否成功开始
     android.bluetoothStartScan = function()
         return JNI:context(android.app.activity.vm, function(jni)
             return jni:callBooleanMethod(android.app.activity.clazz, "bluetoothStartScan", "()Z")
         end)
     end
 
+    -- 停止扫描
     android.bluetoothStopScan = function()
         JNI:context(android.app.activity.vm, function(jni)
             jni:callVoidMethod(android.app.activity.clazz, "bluetoothStopScan", "()V")
         end)
     end
 
+    -- 是否正在扫描
     android.bluetoothIsScanning = function()
         return JNI:context(android.app.activity.vm, function(jni)
             return jni:callBooleanMethod(android.app.activity.clazz, "bluetoothIsScanning", "()Z")
         end)
     end
 
-    --- Returns a list of { address, name, bonded, connected }.
+    --- 返回设备列表，每项为 { address 地址, name 名称, bonded 已配对, connected 已连接 }。
+    -- Java 端返回文本，每行一个设备，字段以制表符分隔："地址\t名称\t已配对(0/1)\t已连接(0/1)"
     android.bluetoothGetDevices = function()
         local raw = JNI:context(android.app.activity.vm, function(jni)
             local str = jni:callObjectMethod(android.app.activity.clazz, "bluetoothGetDevices", "()Ljava/lang/String;")
@@ -2550,6 +2557,7 @@ local function run(android_app_state)
         return devices
     end
 
+    -- 连接指定地址的设备，返回连接请求是否已发出（连接结果需轮询设备列表）
     android.bluetoothConnect = function(address)
         return JNI:context(android.app.activity.vm, function(jni)
             local addr = jni.env[0].NewStringUTF(jni.env, address)

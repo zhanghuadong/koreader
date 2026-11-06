@@ -1,5 +1,7 @@
 --[[--
-Autoturn speed popup, shown just above the status bar while autoturn is running.
+自动翻页"翻页速度"弹窗：自动翻页运行时点击状态栏弹出，紧贴状态栏上方显示。
+
+包含标题栏（自定义间隔、关闭）、分档速度滑块和底部"停止"按钮。
 ]]
 
 local AutoTurnBar = require("ui/widget/autoturnbar")
@@ -27,14 +29,16 @@ local _ = require("gettext")
 local C_ = _.pgettext
 local Screen = Device.screen
 
-local STOPS = { 20, 12, 8, 6, 4, 3 } -- seconds, slow to fast
+local STOPS = { 20, 12, 8, 6, 4, 3 } -- 滑块各档位（秒），从慢到快
 
+-- 速度滑块：上方刻度文字和刻度线，下方轨道和圆形滑钮
 local SpeedSlider = InputContainer:extend{
     width = nil,
-    value = nil, -- seconds
-    callback = nil,
+    value = nil,    -- 当前间隔（秒）
+    callback = nil, -- 档位变化时回调 callback(秒)
 }
 
+-- 创建刻度文字，计算轨道位置和高度，注册点击/拖动/滑动手势
 function SpeedSlider:init()
     self.knob_r = Screen:scaleBySize(16)
     self.tick_h = Screen:scaleBySize(10)
@@ -67,11 +71,12 @@ function SpeedSlider:getSize()
     return self.dimen
 end
 
+-- 第 i 个档位相对控件左边的 x 坐标（各档位等距分布）
 function SpeedSlider:stopX(i)
     return self.track_x0 + math.floor(self.track_w * (i - 1) / (#STOPS - 1))
 end
 
--- Knob position for any value: stops are not evenly spaced in seconds, so interpolate between neighbours.
+-- 当前值对应的滑钮位置：档位的秒数并非等差，所以在相邻两档之间按比例插值（自定义间隔也能落在轨道上）
 function SpeedSlider:valueX()
     local v = self.value
     if v >= STOPS[1] then return self:stopX(1) end
@@ -85,6 +90,7 @@ function SpeedSlider:valueX()
     end
 end
 
+-- 绘制刻度文字、刻度线、轨道（滑钮左侧粗黑线，右侧细灰线）和滑钮
 function SpeedSlider:paintTo(bb, x, y)
     self.dimen.x, self.dimen.y = x, y
     bb:paintRect(x, y, self.width, self.height, Blitbuffer.COLOR_WHITE)
@@ -106,6 +112,7 @@ function SpeedSlider:paintTo(bb, x, y)
     bb:paintCircle(knob_x, track_y, self.knob_r, Blitbuffer.COLOR_BLACK, Size.border.thick)
 end
 
+-- 吸附到离屏幕坐标 screen_x 最近的档位，值有变化时回调
 function SpeedSlider:selectAt(screen_x)
     local best, best_d
     for i = 1, #STOPS do
@@ -121,6 +128,7 @@ function SpeedSlider:selectAt(screen_x)
     return true
 end
 
+-- 点击、拖动松手：选中手指位置的档位
 function SpeedSlider:onTapSlider(_, ges)
     return self:selectAt(ges.pos.x)
 end
@@ -129,6 +137,7 @@ function SpeedSlider:onPanReleaseSlider(_, ges)
     return self:selectAt(ges.pos.x)
 end
 
+-- 快速横滑：按滑动终点选择档位
 function SpeedSlider:onSwipeSlider(_, ges)
     if ges.direction == "east" then
         return self:selectAt(ges.pos.x + ges.distance)
@@ -145,10 +154,11 @@ function SpeedSlider:free()
 end
 
 local AutoTurnDialog = InputContainer:extend{
-    autoturn = nil,
-    bottom_offset = 0, -- height of the status bar we sit above
+    autoturn = nil,    -- 自动翻页插件实例
+    bottom_offset = 0, -- 下方状态栏高度，弹窗显示在其上方
 }
 
+-- 宽度为屏幕 84%；返回键或点击弹窗外部关闭
 function AutoTurnDialog:init()
     self.width = math.floor(Screen:getWidth() * 0.84)
     if Device:hasKeys() then
@@ -163,6 +173,7 @@ function AutoTurnDialog:init()
     self:update()
 end
 
+-- 构建弹窗内容：标题栏（标题 + 编辑/关闭图标）、速度滑块、分隔线、"停止"按钮
 function AutoTurnDialog:update()
     local border = Size.border.thick
     local radius = Screen:scaleBySize(10)
@@ -221,7 +232,7 @@ function AutoTurnDialog:update()
     local disable_button = Button:new{
         text = C_("Autoturn", "Stop"),
         width = outer_w - 2 * radius,
-        -- stay clear of the rounded bottom corners
+        -- 上下左右各留出圆角半径，避免按钮遮住弹窗底部圆角
         height = footer_h - 2 * radius,
         bordersize = 0,
         padding = 0,
@@ -268,6 +279,7 @@ function AutoTurnDialog:update()
     }
 end
 
+-- 弹出数字选择框，自定义任意翻页间隔（1~3600 秒）
 function AutoTurnDialog:showCustomInterval()
     local SpinWidget = require("ui/widget/spinwidget")
     UIManager:show(SpinWidget:new{
@@ -286,6 +298,7 @@ function AutoTurnDialog:showCustomInterval()
     })
 end
 
+-- 重建内容并局部刷新（使用旧区域，避免尺寸变化留下残影）
 function AutoTurnDialog:refresh()
     local old_dimen = self.frame.dimen and self.frame.dimen:copy()
     self:update()
@@ -311,6 +324,7 @@ function AutoTurnDialog:onClose()
     return true
 end
 
+-- 点击弹窗外部时关闭
 function AutoTurnDialog:onTapClose(arg, ges)
     if ges.pos:notIntersectWith(self.frame.dimen) then
         self:onClose()

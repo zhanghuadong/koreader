@@ -813,6 +813,7 @@ function ReaderFooter:updateFooterContainer()
         table.insert(self.vertical_frame, self.footer_container)
     end
     self.footer_content = FrameContainer:new{
+        -- 定制：自动翻页运行时用自动翻页状态栏替换原状态栏内容
         self.autoturn_bar_sec and self:genAutoTurnBar() or self.vertical_frame,
         background = Blitbuffer.COLOR_WHITE,
         bordersize = 0,
@@ -885,7 +886,7 @@ function ReaderFooter:rescheduleFooterAutoRefreshIfNeeded()
         end
     end
     if self.autoturn_bar_sec then
-        schedule = true -- the bar shows a clock
+        schedule = true -- 定制：自动翻页状态栏显示时间，需要每分钟刷新
     end
     if schedule then
         UIManager:scheduleIn(61 - tonumber(os.date("%S")), self.autoRefreshFooter)
@@ -2309,6 +2310,7 @@ function ReaderFooter:_updateFooterText(force_repaint, full_repaint)
         return
     end
 
+    -- 定制：重新生成自动翻页状态栏，更新时间和进度
     if self.autoturn_bar_sec then
         self.footer_content[1]:free()
         self.footer_content[1] = self:genAutoTurnBar()
@@ -2482,6 +2484,7 @@ end
 function ReaderFooter:applyFooterMode(mode)
     if mode ~= nil then self.mode = mode end
     local prev_visible_state = self.view.footer_visible
+    -- 定制：即使状态栏被隐藏，自动翻页时也要显示自动翻页状态栏
     self.view.footer_visible = (self.mode ~= self.mode_list.off) or self.autoturn_bar_sec ~= nil
 
     -- NOTE: _updateFooterText won't actually run the text generator(s) when hidden ;).
@@ -2526,6 +2529,7 @@ function ReaderFooter:onExitFlippingMode()
 end
 
 function ReaderFooter:TapFooter(ges)
+    -- 定制：自动翻页时点击状态栏打开翻页速度弹窗
     if self.autoturn_bar_sec then
         self.ui:handleEvent(Event:new("ShowAutoTurnDialog"))
         return true
@@ -2694,6 +2698,7 @@ function ReaderFooter:refreshFooter(refresh, signal)
     end
 end
 
+-- 定制：生成自动翻页状态栏（时间、翻页间隔、阅读进度）
 function ReaderFooter:genAutoTurnBar()
     return AutoTurnBar:new{
         width = self._saved_screen_width or Screen:getWidth(),
@@ -2703,10 +2708,11 @@ function ReaderFooter:genAutoTurnBar()
     }
 end
 
---- Replace the status bar with the autoturn bar (seconds = interval), or restore it (seconds = nil).
--- Before the document is laid out, pass no_relayout: the margins will pick up the new height on their own.
+--- 定制：用自动翻页状态栏替换原状态栏（seconds 为翻页间隔），或恢复原状态栏（seconds 为 nil）。
+-- 文档尚未排版时传 no_relayout：页边距会自行使用新的状态栏高度，无需重新排版。
 function ReaderFooter:setAutoTurnBar(seconds, no_relayout)
     if self.settings.disabled then return end
+    -- 是否在两种状态栏之间切换（只改间隔时不需要重新计算显示状态和页面布局）
     local toggled = (seconds ~= nil) ~= (self.autoturn_bar_sec ~= nil)
     self.autoturn_bar_sec = seconds
     if toggled then

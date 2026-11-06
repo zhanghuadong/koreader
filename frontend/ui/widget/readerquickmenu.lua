@@ -1,8 +1,10 @@
 --[[--
-Reader menu overlay: a top bar (back, book title, bookmark toggle) and a bottom tab bar
-(Chapters, Progress, Typesetting, More). The Progress tab toggles a panel showing book
-progress, chapter progress and total reading time.
-In landscape, all of these become a full-height icon sidebar.
+阅读器快捷菜单（点击屏幕中间或按菜单键打开），覆盖在阅读页上。
+
+竖屏：顶部栏（返回、书名、书签开关）+ 底部标签栏（章节、进度、排版、更多），
+点击"进度/排版/更多"在标签栏上方展开对应面板，再次点击收起。
+横屏：所有入口变成一条全高的图标侧边栏，面板以全高列的形式显示在侧边栏旁，
+侧边栏分隔线上的小三角指向打开该面板的图标。
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
@@ -35,16 +37,18 @@ local _ = require("gettext")
 local T = require("ffi/util").template
 local Screen = Device.screen
 
+-- 标签项：上方图标，下方文字，整块可点击（底部标签栏和"更多"面板共用）
 local TabItem = InputContainer:extend{
     icon = nil,
     text = nil,
     width = nil,
-    height = nil, -- defaults to the content height plus padding
-    icon_size = 38,
-    text_size = 19,
+    height = nil,   -- 默认为内容高度加上下内边距
+    icon_size = 38, -- 图标尺寸（未缩放）
+    text_size = 19, -- 文字字号
     callback = nil,
 }
 
+-- 构建图标和文字，在给定尺寸内居中，注册点击手势
 function TabItem:init()
     local icon_size = Screen:scaleBySize(self.icon_size)
     local v_padding = Screen:scaleBySize(12)
@@ -86,11 +90,11 @@ function TabItem:onTapTab()
     return true
 end
 
--- Sidebar separator line, with an optional caret pointing at the panel opened from one of its items.
+-- 侧边栏分隔线，可带一个小三角，指向由某个图标打开的面板
 local SideLine = Widget:extend{
     height = nil,
-    caret_y = nil,
-    caret_dir = -1, -- -1: caret points left, 1: right
+    caret_y = nil,  -- 小三角中心的 y 坐标，nil 表示不画
+    caret_dir = -1, -- -1：三角朝左，1：朝右
 }
 
 function SideLine:init()
@@ -101,6 +105,7 @@ function SideLine:getSize()
     return self.dimen
 end
 
+-- 画竖线；小三角逐列绘制在线外侧，每列向内收缩
 function SideLine:paintTo(bb, x, y)
     bb:paintRect(x, y, self.dimen.w, self.dimen.h, Blitbuffer.COLOR_BLACK)
     if self.caret_y then
@@ -112,10 +117,12 @@ function SideLine:paintTo(bb, x, y)
     end
 end
 
+-- 可点击容器：尺寸取自子控件
 local TapBox = InputContainer:extend{
     callback = nil,
 }
 
+-- 按子控件尺寸注册点击手势
 function TapBox:init()
     local size = self[1]:getSize()
     self.dimen = Geom:new{ x = 0, y = 0, w = size.w, h = size.h }
@@ -136,14 +143,15 @@ end
 
 local ReaderQuickMenu = InputContainer:extend{
     ui = nil,
-    -- nil, "progress", "typeset" or "font"
+    -- 当前展开的面板：nil（无）、"progress"（进度）、"typeset"（排版）、"font"（字体列表）、"more"（更多）
     bottom_mode = nil,
 }
 
+-- 记录屏幕尺寸；返回键或点击菜单以外区域关闭
 function ReaderQuickMenu:init()
     self.screen_w = Screen:getWidth()
     self.screen_h = Screen:getHeight()
-    -- width available to the panels (the whole screen in portrait, beside the sidebar in landscape)
+    -- 面板可用宽度（竖屏为整屏宽，横屏为侧边栏以外的宽度）
     self.width = self.screen_w
     self.side_padding = Size.padding.fullscreen
 
@@ -159,6 +167,7 @@ function ReaderQuickMenu:init()
     self:update()
 end
 
+-- 构建菜单；竖屏为顶部栏 + 底部栏，top_dimen/bottom_dimen 记录两者区域（用于点击判断和刷新）
 function ReaderQuickMenu:update()
     local screen_dimen = Geom:new{ w = self.screen_w, h = self.screen_h }
     if self.screen_w > self.screen_h then
@@ -178,11 +187,12 @@ function ReaderQuickMenu:update()
     }
 end
 
--- Landscape: a full-height icon sidebar on the device's bottom edge, panels as full-height columns
--- beside it, with a caret on the sidebar line pointing at the item that opened them.
--- top_dimen is the sidebar, bottom_dimen the panel (same as the sidebar when no panel is shown).
+-- 横屏：全高图标侧边栏位于设备原底边一侧（逆时针旋转时在左侧，否则在右侧），
+-- 面板以全高列显示在侧边栏旁，侧边栏分隔线上的小三角指向打开面板的图标。
+-- top_dimen 为侧边栏区域，bottom_dimen 为面板区域（无面板时与侧边栏相同）。
 function ReaderQuickMenu:updateLandscape(screen_dimen)
     local on_left = Screen:getRotationMode() == Screen.DEVICE_ROTATED_COUNTER_CLOCKWISE
+    -- 面板对应的侧边栏图标（字体列表由排版打开，三角仍指向排版）
     local column_caret = ({ font = "typeset", typeset = "typeset", more = "more", progress = "progress" })[self.bottom_mode]
     local sidebar = self:buildSideBar(on_left, column_caret)
     local sidebar_w = sidebar:getSize().w
@@ -194,6 +204,7 @@ function ReaderQuickMenu:updateLandscape(screen_dimen)
             or RightContainer:new{ dimen = screen_dimen:copy(), sidebar },
     }
     if column_caret then
+        -- 按当前面板生成列内容，并在靠阅读页一侧加一条竖线
         local list
         if self.bottom_mode == "font" then
             list = TypesetPanel.buildFontList(self, {
@@ -226,7 +237,7 @@ function ReaderQuickMenu:updateLandscape(screen_dimen)
         local panel_w = panel:getSize().w
         local panel_x = on_left and sidebar_w or self.width - panel_w
         panel.overlap_offset = { panel_x, 0 }
-        -- painted before the sidebar, so the caret on the sidebar line stays on top
+        -- 插在侧边栏之前绘制，使侧边栏分隔线上的小三角显示在面板上层
         table.insert(self[1], 1, panel)
         self.bottom_dimen = Geom:new{ x = panel_x, y = 0, w = panel_w, h = self.screen_h }
     else
@@ -234,6 +245,8 @@ function ReaderQuickMenu:updateLandscape(screen_dimen)
     end
 end
 
+-- 横屏侧边栏：返回、书签、章节、进度、排版、更多六个图标纵向等分全高；
+-- caret_id 为需要显示小三角的图标
 function ReaderQuickMenu:buildSideBar(on_left, caret_id)
     local icon_size = Screen:scaleBySize(48)
     local item_w = Screen:scaleBySize(110)
@@ -278,8 +291,9 @@ function ReaderQuickMenu:buildSideBar(on_left, caret_id)
     }
 end
 
---- Actions shared by the portrait tab bar and the landscape sidebar.
+--- 竖屏标签栏和横屏侧边栏共用的操作
 function ReaderQuickMenu:getTabActions()
+    -- 展开/收起面板：点击已展开的面板时收起
     local function togglePanel(mode)
         self.bottom_mode = self.bottom_mode ~= mode and mode or nil
         self:refresh()
@@ -301,6 +315,7 @@ function ReaderQuickMenu:getTabActions()
             togglePanel("progress")
         end,
         typeset = function()
+            -- 排版面板只适用于流式文档（EPUB 等）；PDF 等固定版式文档打开原底部设置菜单
             if self.ui.rolling then
                 togglePanel("typeset")
             else
@@ -314,7 +329,7 @@ function ReaderQuickMenu:getTabActions()
     }
 end
 
--- Panel for the current bottom_mode, or nil
+-- 竖屏下当前 bottom_mode 对应的面板，无面板时返回 nil
 function ReaderQuickMenu:buildPanel()
     if self.bottom_mode == "font" then
         return TypesetPanel.buildFontList(self)
@@ -327,6 +342,7 @@ function ReaderQuickMenu:buildPanel()
     end
 end
 
+-- 竖屏顶部栏：返回按钮 + 书名（左），书签开关（右），底部粗分隔线
 function ReaderQuickMenu:buildTopBar()
     local icon_size = Screen:scaleBySize(30)
     local actions = self:getTabActions()
@@ -394,6 +410,8 @@ function ReaderQuickMenu:buildTopBar()
     }
 end
 
+-- 进度数据：全书进度、本章进度（章节内页码，无目录时用全书页码）、累计阅读时间
+-- （优先取阅读统计插件的数据，没有时取文档设置中记录的阅读时长）
 function ReaderQuickMenu:getProgressValues()
     local ui = self.ui
     local pageno = ui:getCurrentPage()
@@ -420,7 +438,7 @@ function ReaderQuickMenu:getProgressValues()
     local hours = math.floor(read_secs / 3600)
     local minutes = math.floor((read_secs % 3600) / 60)
 
-    -- label, then the value parts (one line each in the landscape column)
+    -- 每项为 { 标签, { 值的各部分 } }：竖屏用" · "拼成一行，横屏每部分各占一行
     return {
         { _("Book progress"), { T("%1%", book_pct) } },
         { _("Chapter progress"), { T("%1%", chapter_pct), T("%1/%2", chapter_current, chapter_total) } },
@@ -428,7 +446,7 @@ function ReaderQuickMenu:getProgressValues()
     }
 end
 
---- Progress values stacked as label / value lines in a full-height column (landscape).
+--- 横屏进度列：标签和数值逐行纵向排列
 function ReaderQuickMenu:buildProgressColumn(width, height)
     local side = Screen:scaleBySize(20)
     local text_w = width - 2 * side
@@ -466,6 +484,7 @@ function ReaderQuickMenu:buildProgressColumn(width, height)
     }
 end
 
+-- 竖屏进度面板：每项一行，左侧标签，右侧数值
 function ReaderQuickMenu:buildProgressPanel()
     local label_face = Font:getFace("cfont", 20)
     local value_face = Font:getFace("cfont", 20)
@@ -496,12 +515,14 @@ function ReaderQuickMenu:buildProgressPanel()
     return panel
 end
 
+-- 触摸翻页是否开启（点击翻页和滑动翻页都未禁用）
 local function isTouchPageTurnEnabled()
     return G_reader_settings:nilOrFalse("page_turns_disable_tap")
        and G_reader_settings:nilOrFalse("page_turns_disable_swipe")
 end
 
---- Entries of the More panel, as { icon, text, callback }.
+--- "更多"面板的条目，每项为 { 图标, 文字, 回调 }：
+-- 蓝牙连接（仅 Android）、自动翻页（运行中显示激活图标）、触摸开关、高级（阅读选项页）
 function ReaderQuickMenu:getMoreItems()
     local entries = {}
     if Device:isAndroid() then
@@ -518,6 +539,7 @@ function ReaderQuickMenu:getMoreItems()
             self.ui:handleEvent(Event:new("ShowAutoTurnDialog"))
         end })
     end
+    -- 触摸开关：同时开启/禁用点击翻页和滑动翻页，菜单保持打开并刷新图标
     local touch_on = isTouchPageTurnEnabled()
     table.insert(entries, { touch_on and "quickmenu.touch" or "quickmenu.touch.off",
         touch_on and _("Touch on") or _("Touch off"), function()
@@ -532,7 +554,7 @@ function ReaderQuickMenu:getMoreItems()
     return entries
 end
 
---- More entries stacked in a full-height column (landscape).
+--- 横屏"更多"列：条目纵向等分全高
 function ReaderQuickMenu:buildMoreColumn(width, height)
     local entries = self:getMoreItems()
     local item_h = math.floor(height / #entries)
@@ -551,6 +573,7 @@ function ReaderQuickMenu:buildMoreColumn(width, height)
     return column
 end
 
+-- 竖屏"更多"面板：条目横向排成一行，每项占四分之一宽
 function ReaderQuickMenu:buildMorePanel()
     local item_w = math.floor(self.width / 4)
     local items = HorizontalGroup:new{ align = "top" }
@@ -570,6 +593,7 @@ function ReaderQuickMenu:buildMorePanel()
     }
 end
 
+-- 竖屏底部栏：展开的面板（如有）+ 分隔线 + 四个标签
 function ReaderQuickMenu:buildBottomBar()
     local tab_w = math.floor(self.width / 4)
     local function tab(icon, text, callback)
@@ -586,7 +610,7 @@ function ReaderQuickMenu:buildBottomBar()
     local group = VerticalGroup:new{ align = "left" }
     local panel = self:buildPanel()
     if self.bottom_mode == "font" then
-        -- the font list replaces the tab bar
+        -- 字体列表替换整个标签栏
         table.insert(group, panel)
         return FrameContainer:new{
             bordersize = 0,
@@ -610,6 +634,8 @@ function ReaderQuickMenu:buildBottomBar()
     }
 end
 
+-- 重建菜单，刷新新旧区域的并集（面板展开/收起时区域大小会变）；
+-- 用 "all" 让下层阅读页一起重绘，收起的面板区域会露出正文
 function ReaderQuickMenu:refresh()
     local old_top, old_bottom = self.top_dimen, self.bottom_dimen
     self:update()
@@ -633,6 +659,7 @@ function ReaderQuickMenu:onCloseWidget()
     end)
 end
 
+-- 关闭菜单并通知 ReaderMenu
 function ReaderQuickMenu:onClose()
     UIManager:close(self)
     if self.close_callback then
@@ -641,6 +668,7 @@ function ReaderQuickMenu:onClose()
     return true
 end
 
+-- 点击菜单以外的区域（阅读页）时关闭
 function ReaderQuickMenu:onTapClose(arg, ges)
     if ges.pos:notIntersectWith(self.top_dimen) and ges.pos:notIntersectWith(self.bottom_dimen) then
         self:onClose()

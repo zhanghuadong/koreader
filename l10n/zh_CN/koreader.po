@@ -24192,6 +24192,9 @@ msgstr "扫码查看更多阅读数据"
 msgid "Show book finished card"
 msgstr "显示读完卡片"
 
+msgid "Opening…"
+msgstr "正在打开…"
+
 msgctxt "Pulldown"
 msgid "Brightness %1%"
 msgstr "亮度 %1%"

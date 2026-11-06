@@ -57,6 +57,7 @@ function ReaderStatus:onEndOfBook()
     local settings = G_reader_settings:readSetting("end_document_action") or "pop-up"
     local top_widget = UIManager:getTopmostVisibleWidget() or {}
     if settings == "pop-up" and top_widget.name ~= "end_document" then
+        -- 定制：默认的"弹窗"动作改为标记已读并显示读完卡片；原询问对话框移到 "pop-up_dialog"
         self:markBook(true)
         UIManager:show(require("ui/widget/bookfinishedcard"):new{ ui = self.ui })
     elseif settings == "pop-up_dialog" and top_widget.name ~= "end_document" then
@@ -221,7 +222,7 @@ end
 
 local end_actions = {
     "pop-up",
-    "pop-up_dialog",
+    "pop-up_dialog", -- 定制：原"弹窗询问"动作
     "nothing",
     "book_status",
     "delete_file",

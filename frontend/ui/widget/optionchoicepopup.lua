@@ -1,6 +1,7 @@
 --[[--
-Centered single-choice popup: a title with a close button, then icon + label rows,
-the current choice marked with a check. The screen behind is dimmed.
+居中的单选弹窗：标题 + 关闭按钮，下面是"图标 + 文字"选项行，当前选中项右侧显示对勾，背景变暗。
+
+用于阅读选项页中的翻页方式等选择。
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
@@ -26,12 +27,14 @@ local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
 local Screen = Device.screen
 
+-- 可点击的选项行容器，子控件为行的显示内容
 local ChoiceRow = InputContainer:extend{
     width = nil,
     height = nil,
-    callback = nil,
+    callback = nil, -- 点击回调
 }
 
+-- 注册整行点击手势
 function ChoiceRow:init()
     self.dimen = Geom:new{ x = 0, y = 0, w = self.width, h = self.height }
     self.ges_events = {
@@ -50,14 +53,15 @@ function ChoiceRow:onTapChoice()
 end
 
 local OptionChoicePopup = InputContainer:extend{
-    title = nil,
-    -- list of { icon = "...", text = "...", value = ... }
+    title = nil, -- 标题
+    -- 选项列表，每项为 { icon = "...", text = "...", value = ... }
     choices = nil,
-    selected = nil, -- value of the current choice
-    callback = nil, -- function(value), called after the popup is closed
-    covers_fullscreen = true, -- we paint the dimmed background ourselves
+    selected = nil, -- 当前选中项的 value
+    callback = nil, -- function(value)，弹窗关闭后回调
+    covers_fullscreen = true, -- 变暗的背景由本控件自行绘制
 }
 
+-- 构建标题栏、粗分隔线和选项行（第二行起前面加缩进的细分隔线）；返回键或点击外部关闭
 function OptionChoicePopup:init()
     self.width = math.floor(Screen:getWidth() * 0.84)
     local border = Size.border.thick
@@ -137,6 +141,7 @@ function OptionChoicePopup:init()
             },
         }
         if choice.value == self.selected then
+            -- 当前选中项：右侧对勾
             table.insert(row, RightContainer:new{
                 dimen = row_dimen:copy(),
                 IconWidget:new{ icon = "check", width = icon_size, height = icon_size },
@@ -177,8 +182,9 @@ function OptionChoicePopup:init()
     }
 end
 
+-- 绘制时先把整屏背景压暗，再绘制弹窗
 function OptionChoicePopup:paintTo(bb, x, y)
-    -- Only dim once: later repaints (e.g. button feedback) must not darken further
+    -- 只压暗一次：之后的重绘（如按钮点击反馈）不能让背景越来越暗
     if not self.dimmed then
         bb:darkenRect(0, 0, Screen:getWidth(), Screen:getHeight(), 0.2)
         self.dimmed = true
@@ -186,6 +192,7 @@ function OptionChoicePopup:paintTo(bb, x, y)
     InputContainer.paintTo(self, bb, x, y)
 end
 
+-- 显示/关闭时刷新整屏（背景变暗和恢复）
 function OptionChoicePopup:onShow()
     UIManager:setDirty(self, function()
         return "ui", Geom:new{ x = 0, y = 0, w = Screen:getWidth(), h = Screen:getHeight() }
@@ -203,6 +210,7 @@ function OptionChoicePopup:onClose()
     return true
 end
 
+-- 点击弹窗外部时关闭
 function OptionChoicePopup:onTapClose(arg, ges)
     if ges.pos:notIntersectWith(self.frame.dimen) then
         self:onClose()
