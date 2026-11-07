@@ -545,6 +545,10 @@ function ReaderZooming:getZoom(pageno)
     if self.ui.view.footer_visible and not self.ui.view.footer.settings.reclaim_height then
         zoom_h = zoom_h - self.ui.view.footer:getHeight()
     end
+    -- 定制：缩放高度扣除顶部状态栏
+    if self.ui.view.top_status_bar_visible and self.ui.view.top_status_bar then
+        zoom_h = zoom_h - self.ui.view.top_status_bar:getHeight()
+    end
     if self.rotation % 180 == 0 then
         -- No rotation or rotated by 180 degrees
         zoom_w = zoom_w / page_size.w

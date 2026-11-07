@@ -15,6 +15,7 @@ local OverlapGroup = require("ui/widget/overlapgroup")
 local ReaderDogear = require("apps/reader/modules/readerdogear")
 local ReaderFlipping = require("apps/reader/modules/readerflipping")
 local ReaderFooter = require("apps/reader/modules/readerfooter")
+local ReaderTopStatusBar = require("apps/reader/modules/readertopstatusbar")
 local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
 local dbg = require("dbg")
@@ -62,6 +63,8 @@ local ReaderView = OverlapGroup:extend{
     dim_area = nil,
     -- has footer
     footer_visible = nil,
+    -- 定制：顶部状态栏（时间 + 电量）是否可见
+    top_status_bar_visible = nil,
     -- has dogear
     dogear_visible = false,
     -- in flipping state
@@ -132,6 +135,11 @@ function ReaderView:addWidgets()
         view = self,
         ui = self.ui,
     }
+    -- 定制：顶部状态栏
+    self.top_status_bar = ReaderTopStatusBar:new{
+        view = self,
+        ui = self.ui,
+    }
     self.flipping = ReaderFlipping:new{
         view = self,
         ui = self.ui,
@@ -147,6 +155,7 @@ function ReaderView:addWidgets()
     self[1] = self.dogear
     self[2] = self.footer
     self[3] = self.flipping
+    self[4] = self.top_status_bar
 end
 
 --[[--
@@ -250,6 +259,10 @@ function ReaderView:paintTo(bb, x, y)
     -- paint footer
     if self.footer_visible then
         self.footer:paintTo(bb, x, y)
+    end
+    -- 定制：绘制顶部状态栏（盖在页面内容之上；正文已通过上边距/可视区域让出空间）
+    if self.top_status_bar_visible then
+        self.top_status_bar:paintTo(bb, x, y)
     end
     -- paint top left corner indicator
     self.flipping:paintTo(bb, x, y)
@@ -768,6 +781,11 @@ function ReaderView:recalculate()
             self.state.rotation)
         -- reset our size
         self.visible_area:setSizeTo(self.dimen)
+        -- 定制：顶部状态栏占用的高度
+        local top_h = self.top_status_bar_visible and self.top_status_bar:getHeight() or 0
+        if top_h > 0 then
+            self.visible_area.h = self.visible_area.h - top_h
+        end
         if self.footer_visible and not self.footer.settings.reclaim_height then
             self.visible_area.h = self.visible_area.h - self.footer:getHeight()
         end
@@ -798,12 +816,13 @@ function ReaderView:recalculate()
         self.visible_area:setSizeTo(self.dimen)
     end
     self.state.offset = Geom:new{x = 0, y = 0}
+    -- 定制：正文从顶部状态栏下方开始绘制
+    local top_h = self.top_status_bar_visible and self.top_status_bar:getHeight() or 0
     if self.dimen.h > self.visible_area.h then
-        if self.footer_visible and not self.footer.settings.reclaim_height then
-            self.state.offset.y = (self.dimen.h - (self.visible_area.h + self.footer:getHeight())) / 2
-        else
-            self.state.offset.y = (self.dimen.h - self.visible_area.h) / 2
-        end
+        local footer_h = (self.footer_visible and not self.footer.settings.reclaim_height) and self.footer:getHeight() or 0
+        self.state.offset.y = top_h + (self.dimen.h - top_h - footer_h - self.visible_area.h) / 2
+    elseif top_h > 0 then
+        self.state.offset.y = top_h
     end
     if self.dimen.w > self.visible_area.w then
         self.state.offset.x = (self.dimen.w - self.visible_area.w) / 2
@@ -1091,6 +1110,19 @@ function ReaderView:onReaderFooterVisibilityChange()
                 end
             end
         end
+    end
+end
+
+-- 定制：顶部状态栏显隐变化时，固定版式文档重新计算可视区域
+function ReaderView:onReaderTopStatusBarVisibilityChange()
+    if self.ui.paging and self.state.page then
+        local x, y = self.visible_area.x, self.visible_area.y
+        self.ui:handleEvent(Event:new("SetDimensions", Screen:getSize()))
+        self.visible_area.x = x
+        self.visible_area.y = y
+    end
+    if self.dogear and self.dogear.updateDogearOffset then
+        self.dogear:updateDogearOffset()
     end
 end
 

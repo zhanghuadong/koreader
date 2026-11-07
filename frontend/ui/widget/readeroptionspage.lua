@@ -2,7 +2,7 @@
 全屏"阅读选项"页，从阅读器快捷菜单的 更多 > 高级 打开。
 
 顶部为时间 + 电量状态行和带返回按钮的标题，下面是选项列表：
-阅读方向、对齐方式（单选弹窗），断字、抗锯齿、EPUB 图片、灰度图片、隐藏状态栏（开关）。
+阅读方向、对齐方式（单选弹窗），断字、抗锯齿、EPUB 图片、灰度图片、隐藏顶部状态栏（开关）。
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
@@ -213,27 +213,14 @@ function ReaderOptionsPage:getOptions()
             self:refresh()
         end,
     })
-    -- 隐藏状态栏：隐藏前记住原显示模式，取消隐藏时恢复（没有记录时恢复为页码进度）
-    local footer = ui.view.footer
-    if not footer.settings.disabled then
+    -- 定制：隐藏顶部状态栏（时间 + 电量）；打开开关 = 隐藏
+    local top_bar = ui.view.top_status_bar
+    if top_bar then
         table.insert(options, {
             text = _("Hide status bar"),
-            checked = footer.mode == footer.mode_list.off,
+            checked = not top_bar.visible,
             callback = function()
-                if footer.mode ~= footer.mode_list.off then
-                    G_reader_settings:saveSetting("reader_footer_mode_before_hide", footer.mode)
-                    footer:applyFooterMode(footer.mode_list.off)
-                else
-                    local mode = G_reader_settings:readSetting("reader_footer_mode_before_hide")
-                    if not mode or mode == footer.mode_list.off then
-                        mode = footer.mode_list.page_progress
-                    end
-                    footer:applyFooterMode(mode)
-                end
-                G_reader_settings:saveSetting("reader_footer_mode", footer.mode)
-                -- 只重新计算：本页面覆盖着阅读页，关闭后阅读页会自然重绘
-                footer:onUpdateFooter()
-                footer:rescheduleFooterAutoRefreshIfNeeded()
+                top_bar:toggle()
                 self:refresh()
             end,
         })

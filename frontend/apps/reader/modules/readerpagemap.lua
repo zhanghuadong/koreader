@@ -200,7 +200,11 @@ function ReaderPageMap:updateVisibleLabels()
     self.container:clear()
     local page_labels = self.ui.document:getPageMapVisiblePageLabels()
     local footer_height = ((self.view.footer_visible and not self.view.footer.settings.reclaim_height) and 1 or 0) * self.view.footer:getHeight()
+    local top_height = (self.view.top_status_bar_visible and self.view.top_status_bar)
+        and self.view.top_status_bar:getHeight() or 0
     local max_y = Screen:getHeight() - footer_height
+    -- 定制：页码标签避开顶部状态栏（绘制时用 screen_y 判断）
+    local min_y = top_height
     local last_label_bottom_y = 0
     local on_second_page = false
     for _, page in ipairs(page_labels) do
@@ -243,6 +247,9 @@ function ReaderPageMap:updateVisibleLabels()
         if offset_y < last_label_bottom_y then
             -- Avoid consecutive labels to overwrite themselbes
             offset_y = last_label_bottom_y
+        end
+        if offset_y < min_y then
+            offset_y = min_y
         end
         if offset_y + label_height > max_y then
             -- Push label up so it's fully above footer

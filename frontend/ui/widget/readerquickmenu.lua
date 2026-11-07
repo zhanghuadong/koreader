@@ -46,6 +46,7 @@ local TabItem = InputContainer:extend{
     icon_size = 38, -- 图标尺寸（未缩放）
     text_size = 19, -- 文字字号
     callback = nil,
+    enabled = true, -- 为 false 时图标和文字变灰，点击无效（如 PDF/DJVU 的排版）
 }
 
 -- 构建图标和文字，在给定尺寸内居中，注册点击手势
@@ -58,6 +59,7 @@ function TabItem:init()
             icon = self.icon,
             width = icon_size,
             height = icon_size,
+            dim = not self.enabled,
         },
         VerticalSpan:new{ width = Screen:scaleBySize(4) },
         TextWidget:new{
@@ -65,6 +67,7 @@ function TabItem:init()
             face = Font:getFace("cfont", self.text_size),
             bold = true,
             max_width = self.width,
+            fgcolor = self.enabled and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_DARK_GRAY,
         },
     }
     local h = self.height or content:getSize().h + 2 * v_padding
@@ -84,7 +87,7 @@ function TabItem:init()
 end
 
 function TabItem:onTapTab()
-    if self.callback then
+    if self.enabled and self.callback then
         self.callback()
     end
     return true
@@ -117,9 +120,10 @@ function SideLine:paintTo(bb, x, y)
     end
 end
 
--- 可点击容器：尺寸取自子控件
+-- 可点击容器：尺寸取自子控件；enabled 为 false 时点击无效
 local TapBox = InputContainer:extend{
     callback = nil,
+    enabled = true,
 }
 
 -- 按子控件尺寸注册点击手势
@@ -137,7 +141,9 @@ function TapBox:init()
 end
 
 function TapBox:onTapBox()
-    self.callback()
+    if self.enabled and self.callback then
+        self.callback()
+    end
     return true
 end
 
@@ -169,6 +175,10 @@ end
 
 -- 构建菜单；竖屏为顶部栏 + 底部栏，top_dimen/bottom_dimen 记录两者区域（用于点击判断和刷新）
 function ReaderQuickMenu:update()
+    -- PDF/DJVU 等固定版式不能打开排版/字体面板
+    if not self.ui.rolling and (self.bottom_mode == "typeset" or self.bottom_mode == "font") then
+        self.bottom_mode = nil
+    end
     local screen_dimen = Geom:new{ w = self.screen_w, h = self.screen_h }
     if self.screen_w > self.screen_h then
         self:updateLandscape(screen_dimen)
@@ -253,6 +263,8 @@ function ReaderQuickMenu:buildSideBar(on_left, caret_id)
     local items = { "back", "bookmark", "chapters", "progress", "typeset", "more" }
     local item_h = math.floor(self.screen_h / #items)
     local bookmarked = self.ui.bookmark and self.ui.bookmark:isPageBookmarked()
+    -- 排版只适用于流式文档（EPUB 等）；PDF/DJVU 等固定版式禁用
+    local typeset_enabled = self.ui.rolling ~= nil
     local icons = {
         back = "chevron.left",
         bookmark = bookmarked and "quickmenu.bookmark.filled" or "quickmenu.bookmark",
@@ -264,11 +276,18 @@ function ReaderQuickMenu:buildSideBar(on_left, caret_id)
     local actions = self:getTabActions()
     local column = VerticalGroup:new{}
     for _, id in ipairs(items) do
+        local enabled = id ~= "typeset" or typeset_enabled
         table.insert(column, TapBox:new{
             callback = actions[id],
+            enabled = enabled,
             CenterContainer:new{
                 dimen = Geom:new{ w = item_w, h = item_h },
-                IconWidget:new{ icon = icons[id], width = icon_size, height = icon_size },
+                IconWidget:new{
+                    icon = icons[id],
+                    width = icon_size,
+                    height = icon_size,
+                    dim = not enabled,
+                },
             },
         })
     end
@@ -315,12 +334,9 @@ function ReaderQuickMenu:getTabActions()
             togglePanel("progress")
         end,
         typeset = function()
-            -- 排版面板只适用于流式文档（EPUB 等）；PDF 等固定版式文档打开原底部设置菜单
+            -- 排版面板只适用于流式文档（EPUB 等）；PDF/DJVU 等固定版式已禁用，点击无效
             if self.ui.rolling then
                 togglePanel("typeset")
-            else
-                self:onClose()
-                self.ui:handleEvent(Event:new("ShowConfigMenu"))
             end
         end,
         more = function()
@@ -596,15 +612,23 @@ end
 -- 竖屏底部栏：展开的面板（如有）+ 分隔线 + 四个标签
 function ReaderQuickMenu:buildBottomBar()
     local tab_w = math.floor(self.width / 4)
-    local function tab(icon, text, callback)
-        return TabItem:new{ icon = icon, text = text, width = tab_w, callback = callback }
+    -- 排版只适用于流式文档（EPUB 等）；PDF/DJVU 等固定版式禁用
+    local typeset_enabled = self.ui.rolling ~= nil
+    local function tab(icon, text, callback, enabled)
+        return TabItem:new{
+            icon = icon,
+            text = text,
+            width = tab_w,
+            callback = callback,
+            enabled = enabled ~= false,
+        }
     end
     local actions = self:getTabActions()
     local tabs = HorizontalGroup:new{
         align = "top",
         tab("quickmenu.chapters", _("Chapters"), actions.chapters),
         tab("quickmenu.progress", _("Progress"), actions.progress),
-        tab("quickmenu.typeset", _("Typesetting"), actions.typeset),
+        tab("quickmenu.typeset", _("Typesetting"), actions.typeset, typeset_enabled),
         tab("quickmenu.more", _("More"), actions.more),
     }
     local group = VerticalGroup:new{ align = "left" }

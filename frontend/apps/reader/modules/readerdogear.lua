@@ -88,6 +88,10 @@ function ReaderDogear:updateDogearOffset()
     if self.view.view_mode == "page" then
         self.dogear_y_offset = self.ui.document:getHeaderHeight()
     end
+    -- 定制：顶部状态栏可见时，书签角标下移到状态栏下方
+    if self.view.top_status_bar_visible and self.view.top_status_bar then
+        self.dogear_y_offset = self.dogear_y_offset + self.view.top_status_bar:getHeight()
+    end
     -- Update components heights and positionnings
     if self[1] then
         self[1].dimen.h = self.dogear_y_offset + self.dogear_size

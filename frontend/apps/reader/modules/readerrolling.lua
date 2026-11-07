@@ -897,7 +897,10 @@ function ReaderRolling:onGotoViewRel(diff)
     logger.dbg("goto relative screen:", diff, "in mode:", self.view.view_mode)
     if self.view.view_mode == "scroll" then
         local footer_height = ((self.view.footer_visible and not self.view.footer.settings.reclaim_height) and 1 or 0) * self.view.footer:getHeight()
-        local page_visible_height = self.ui.dimen.h - footer_height
+        -- 定制：滚动模式可视高度还需扣除顶部状态栏
+        local top_height = (self.view.top_status_bar_visible and self.view.top_status_bar)
+            and self.view.top_status_bar:getHeight() or 0
+        local page_visible_height = self.ui.dimen.h - footer_height - top_height
         local pan_diff = diff * page_visible_height
         if self.view.page_overlap_enable then
             local overlap_lines = G_reader_settings:readSetting("copt_overlap_lines") or 1
@@ -1137,15 +1140,17 @@ function ReaderRolling:_gotoPos(new_pos, do_dim_area)
     -- adjust dim_area according to new_pos
     if self.view.view_mode ~= "page" and self.view.page_overlap_enable and do_dim_area then
         local footer_height = ((self.view.footer_visible and not self.view.footer.settings.reclaim_height) and 1 or 0) * self.view.footer:getHeight()
-        local page_visible_height = self.ui.dimen.h - footer_height
+        local top_height = (self.view.top_status_bar_visible and self.view.top_status_bar)
+            and self.view.top_status_bar:getHeight() or 0
+        local page_visible_height = self.ui.dimen.h - footer_height - top_height
         local panned_step = new_pos - self.current_pos
         self.view.dim_area.x = 0
         self.view.dim_area.h = page_visible_height - math.abs(panned_step)
         self.view.dim_area.w = self.ui.dimen.w
         if panned_step < 0 then
-            self.view.dim_area.y = page_visible_height - self.view.dim_area.h
+            self.view.dim_area.y = top_height + page_visible_height - self.view.dim_area.h
         elseif panned_step > 0 then
-            self.view.dim_area.y = 0
+            self.view.dim_area.y = top_height
         end
         if self.current_pos > max_pos - self.ui.dimen.h/2 then
             -- Avoid a fully dimmed page when reaching end of document

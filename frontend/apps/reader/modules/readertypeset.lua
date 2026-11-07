@@ -540,7 +540,11 @@ end
 
 function ReaderTypeset:onSetPageMargins(margins, when_applied_callback)
     local left = Screen:scaleBySize(margins[1])
+    -- 定制：顶部状态栏可见时，把其高度加进上边距，避免挡住正文
     local top = Screen:scaleBySize(margins[2])
+    if self.view.top_status_bar_visible and self.view.top_status_bar then
+        top = top + self.view.top_status_bar:getHeight()
+    end
     local right = Screen:scaleBySize(margins[3])
     local bottom
     if self.view.footer.reclaim_height then
