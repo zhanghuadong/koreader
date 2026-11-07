@@ -887,10 +887,16 @@ function ReaderToc:onShowToc()
     --       because we inflate the state Button's width on the left, mainly to give it a larger tap zone.
     --       This yields *slightly* better alignment between state & mandatory (in terms of effective margins).
     local button_size = self.expand_button:getSize()
+    -- 先建全屏容器，再创建 Menu，保证底栏按钮的 show_parent 指向入栈窗口
+    local menu_container = CenterContainer:new{
+        dimen = Screen:getSize(),
+        covers_fullscreen = true, -- hint for UIManager:_repaint()
+    }
     -- 定制：顶部为"章节 | 书签"标签栏，点击"书签"切换到书签列表，长按"章节"打开列表设置，
     -- 右侧定位按钮跳回当前阅读章节
     local nav_title_bar = ReaderNavTitleBar:new{
         active_tab = "toc",
+        show_parent = menu_container,
         tab_callback = function()
             self.toc_menu.close_callback()
             self.ui:handleEvent(Event:new("ShowBookmark"))
@@ -927,6 +933,7 @@ function ReaderToc:onShowToc()
         items_font_size = items_font_size,
         items_padding = can_collapse and math.floor(Size.padding.fullscreen / 2) or nil, -- c.f., note above. Menu's default is twice that.
         line_color = Blitbuffer.COLOR_WHITE,
+        show_parent = menu_container,
         onLeftButtonTap = function()
             self:showTocDialog()
         end,
@@ -942,12 +949,7 @@ function ReaderToc:onShowToc()
             }
         }
     }
-
-    local menu_container = CenterContainer:new{
-        dimen = Screen:getSize(),
-        covers_fullscreen = true, -- hint for UIManager:_repaint()
-        toc_menu,
-    }
+    table.insert(menu_container, toc_menu)
 
     function toc_menu:onMenuSelect(item, pos)
         -- if toc item has expand/collapse state and tap select on the left side
@@ -1084,13 +1086,8 @@ function ReaderToc:onShowToc()
 
     toc_menu.close_callback = function()
         UIManager:close(menu_container)
+        self.toc_menu = nil
         BD.resetInvert()
-    end
-
-    toc_menu.show_parent = menu_container
-    -- 定位按钮创建时容器还不存在，这里补上 show_parent，使按钮点击反馈能正确刷新
-    if nav_title_bar.right_button then
-        nav_title_bar.right_button.show_parent = menu_container
     end
 
     self.toc_menu = toc_menu

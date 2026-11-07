@@ -63,13 +63,19 @@ function Version:getShortVersion()
     if not self.short then
         local rev = self:getCurrentRevision()
         if (not rev or rev == "") then return "unknown" end
+        -- 上游标签形如 v2015.11 / v2025.04.1；也兼容本项目的 v1.0.0
         local year, month, point, revision = rev:match("v(%d%d%d%d)%.(%d%d)%.?(%d?%d?)-?(%d*)")
-        self.short = year .. "." .. month
-        if point and point ~= "" then
-            self.short = self.short .. "." .. point
-        end
-        if revision and revision ~= "" then
-            self.short = self.short .. "-" .. revision
+        if year and month then
+            self.short = year .. "." .. month
+            if point and point ~= "" then
+                self.short = self.short .. "." .. point
+            end
+            if revision and revision ~= "" then
+                self.short = self.short .. "-" .. revision
+            end
+        else
+            -- 定制：非 YYYY.MM 标签（如 v1.0.0）直接取平台后缀前的版本段
+            self.short = rev:match("^v?([^_]+)") or rev
         end
     end
     return self.short

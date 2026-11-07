@@ -93,7 +93,7 @@ function TabItem:onTapTab()
     return true
 end
 
--- 侧边栏分隔线，可带一个小三角，指向由某个图标打开的面板
+-- 侧边栏竖向分隔线，可带小三角（朝左/朝右）指向打开面板的图标
 local SideLine = Widget:extend{
     height = nil,
     caret_y = nil,  -- 小三角中心的 y 坐标，nil 表示不画
@@ -108,14 +108,54 @@ function SideLine:getSize()
     return self.dimen
 end
 
--- 画竖线；小三角逐列绘制在线外侧，每列向内收缩
+-- 画竖线；指示三角为镂空白心 + 黑边（从分隔线切开并指向面板）
 function SideLine:paintTo(bb, x, y)
     bb:paintRect(x, y, self.dimen.w, self.dimen.h, Blitbuffer.COLOR_BLACK)
     if self.caret_y then
         local size = Screen:scaleBySize(9)
+        local cy0 = y + self.caret_y
         for i = 0, size - 1 do
-            local cx = self.caret_dir < 0 and x - 1 - i or x + self.dimen.w + i
-            bb:paintRect(cx, y + self.caret_y - (size - i), 1, 2 * (size - i), Blitbuffer.COLOR_BLACK)
+            local half = size - i
+            local cx = self.caret_dir < 0 and x - i or x + self.dimen.w - 1 + i
+            -- 白色镂空主体
+            bb:paintRect(cx, cy0 - half, 1, 2 * half, Blitbuffer.COLOR_WHITE)
+            -- 黑边描边
+            bb:paintRect(cx, cy0 - half, 1, 1, Blitbuffer.COLOR_BLACK)
+            bb:paintRect(cx, cy0 + half - 1, 1, 1, Blitbuffer.COLOR_BLACK)
+        end
+    end
+end
+
+-- 竖屏底部横向分隔线，可带小三角（朝下/朝上）指向对应标签
+-- 样式与设计稿一致：实线中部镂空白色指示三角
+local CaretLine = Widget:extend{
+    width = nil,
+    caret_x = nil,  -- 小三角中心的 x 坐标，nil 表示不画
+    caret_dir = 1,  -- 1：三角朝下（面板在上、标签在下），-1：朝上
+}
+
+function CaretLine:init()
+    self.dimen = Geom:new{ x = 0, y = 0, w = self.width, h = Size.line.thick }
+end
+
+function CaretLine:getSize()
+    return self.dimen
+end
+
+-- 画横线；指示三角为镂空白心 + 黑边（切开分隔线并指向标签）
+function CaretLine:paintTo(bb, x, y)
+    bb:paintRect(x, y, self.dimen.w, self.dimen.h, Blitbuffer.COLOR_BLACK)
+    if self.caret_x then
+        local size = Screen:scaleBySize(9)
+        local cx0 = x + self.caret_x
+        for i = 0, size - 1 do
+            local half = size - i
+            local cy = self.caret_dir > 0 and y + i or y + self.dimen.h - 1 - i
+            -- 白色镂空主体（含切开黑线）
+            bb:paintRect(cx0 - half, cy, 2 * half, 1, Blitbuffer.COLOR_WHITE)
+            -- 黑边描边
+            bb:paintRect(cx0 - half, cy, 1, 1, Blitbuffer.COLOR_BLACK)
+            bb:paintRect(cx0 + half - 1, cy, 1, 1, Blitbuffer.COLOR_BLACK)
         end
     end
 end
@@ -155,26 +195,36 @@ local ReaderQuickMenu = InputContainer:extend{
 
 -- 记录屏幕尺寸；返回键或点击菜单以外区域关闭
 function ReaderQuickMenu:init()
-    self.screen_w = Screen:getWidth()
-    self.screen_h = Screen:getHeight()
-    -- 面板可用宽度（竖屏为整屏宽，横屏为侧边栏以外的宽度）
-    self.width = self.screen_w
     self.side_padding = Size.padding.fullscreen
-
     if Device:hasKeys() then
         self.key_events.Close = { { Device.input.group.Back } }
     end
+    -- range 用函数，保证 rebuild 后仍覆盖当前屏幕，连续点击不会落在旧热区
     self.ges_events.TapClose = {
         GestureRange:new{
             ges = "tap",
-            range = Geom:new{ x = 0, y = 0, w = self.screen_w, h = self.screen_h },
+            range = function()
+                return Geom:new{ x = 0, y = 0, w = self.screen_w, h = self.screen_h }
+            end,
         },
     }
     self:update()
 end
 
+-- 顶部状态栏占用的高度（菜单需为其留空，让阅读页上的状态栏露在菜单之上）
+function ReaderQuickMenu:getStatusBarHeight()
+    if self.ui.view.top_status_bar_visible and self.ui.view.top_status_bar then
+        return self.ui.view.top_status_bar:getHeight()
+    end
+    return 0
+end
+
 -- 构建菜单；竖屏为顶部栏 + 底部栏，top_dimen/bottom_dimen 记录两者区域（用于点击判断和刷新）
 function ReaderQuickMenu:update()
+    self.screen_w = Screen:getWidth()
+    self.screen_h = Screen:getHeight()
+    -- 面板可用宽度（竖屏为整屏宽，横屏为侧边栏以外的宽度）
+    self.width = self.screen_w
     -- PDF/DJVU 等固定版式不能打开排版/字体面板
     if not self.ui.rolling and (self.bottom_mode == "typeset" or self.bottom_mode == "font") then
         self.bottom_mode = nil
@@ -184,15 +234,22 @@ function ReaderQuickMenu:update()
         self:updateLandscape(screen_dimen)
         return
     end
+    local status_h = self:getStatusBarHeight()
     local top = self:buildTopBar()
     local bottom = self:buildBottomBar()
     local top_h = top:getSize().h
     local bottom_h = bottom:getSize().h
-    self.top_dimen = Geom:new{ x = 0, y = 0, w = self.screen_w, h = top_h }
+    -- 状态栏区域留空（透明），阅读页顶部状态栏透出；标题栏从状态栏下方开始
+    local top_block = VerticalGroup:new{
+        align = "left",
+        VerticalSpan:new{ width = status_h },
+        top,
+    }
+    self.top_dimen = Geom:new{ x = 0, y = 0, w = self.screen_w, h = status_h + top_h }
     self.bottom_dimen = Geom:new{ x = 0, y = self.screen_h - bottom_h, w = self.screen_w, h = bottom_h }
     self[1] = OverlapGroup:new{
         dimen = screen_dimen,
-        TopContainer:new{ dimen = screen_dimen:copy(), top },
+        TopContainer:new{ dimen = screen_dimen:copy(), top_block },
         BottomContainer:new{ dimen = screen_dimen:copy(), bottom },
     }
 end
@@ -200,18 +257,26 @@ end
 -- 横屏：全高图标侧边栏位于设备原底边一侧（逆时针旋转时在左侧，否则在右侧），
 -- 面板以全高列显示在侧边栏旁，侧边栏分隔线上的小三角指向打开面板的图标。
 -- top_dimen 为侧边栏区域，bottom_dimen 为面板区域（无面板时与侧边栏相同）。
+-- 顶部状态栏可见时，侧边栏和面板整体下移，顶部留空透出状态栏。
 function ReaderQuickMenu:updateLandscape(screen_dimen)
     local on_left = Screen:getRotationMode() == Screen.DEVICE_ROTATED_COUNTER_CLOCKWISE
+    local status_h = self:getStatusBarHeight()
+    local content_h = self.screen_h - status_h
     -- 面板对应的侧边栏图标（字体列表由排版打开，三角仍指向排版）
     local column_caret = ({ font = "typeset", typeset = "typeset", more = "more", progress = "progress" })[self.bottom_mode]
+    -- 临时用内容区高度构建侧边栏，使图标在状态栏下方等分
+    local full_h = self.screen_h
+    self.screen_h = content_h
     local sidebar = self:buildSideBar(on_left, column_caret)
+    self.screen_h = full_h
     local sidebar_w = sidebar:getSize().w
     self.width = self.screen_w - sidebar_w
-    self.top_dimen = Geom:new{ x = on_left and 0 or self.width, y = 0, w = sidebar_w, h = self.screen_h }
+    self.top_dimen = Geom:new{ x = on_left and 0 or self.width, y = status_h, w = sidebar_w, h = content_h }
+    -- 侧边栏画在状态栏下方
+    sidebar.overlap_offset = { on_left and 0 or self.width, status_h }
     self[1] = OverlapGroup:new{
         dimen = screen_dimen,
-        on_left and LeftContainer:new{ dimen = screen_dimen:copy(), sidebar }
-            or RightContainer:new{ dimen = screen_dimen:copy(), sidebar },
+        sidebar,
     }
     if column_caret then
         -- 按当前面板生成列内容，并在靠阅读页一侧加一条竖线
@@ -220,21 +285,21 @@ function ReaderQuickMenu:updateLandscape(screen_dimen)
             list = TypesetPanel.buildFontList(self, {
                 column = true,
                 width = Screen:scaleBySize(310),
-                height = self.screen_h,
+                height = content_h,
             })
         elseif self.bottom_mode == "typeset" then
             list = TypesetPanel.buildSettings(self, {
                 column = true,
                 width = Screen:scaleBySize(310),
-                height = self.screen_h,
+                height = content_h,
             })
         elseif self.bottom_mode == "progress" then
-            list = self:buildProgressColumn(Screen:scaleBySize(300), self.screen_h)
+            list = self:buildProgressColumn(Screen:scaleBySize(300), content_h)
         else
-            list = self:buildMoreColumn(Screen:scaleBySize(150), self.screen_h)
+            list = self:buildMoreColumn(Screen:scaleBySize(150), content_h)
         end
         local page_line = LineWidget:new{
-            dimen = Geom:new{ w = Size.line.thick, h = self.screen_h },
+            dimen = Geom:new{ w = Size.line.thick, h = content_h },
             background = Blitbuffer.COLOR_BLACK,
         }
         local panel = FrameContainer:new{
@@ -246,10 +311,10 @@ function ReaderQuickMenu:updateLandscape(screen_dimen)
         }
         local panel_w = panel:getSize().w
         local panel_x = on_left and sidebar_w or self.width - panel_w
-        panel.overlap_offset = { panel_x, 0 }
+        panel.overlap_offset = { panel_x, status_h }
         -- 插在侧边栏之前绘制，使侧边栏分隔线上的小三角显示在面板上层
         table.insert(self[1], 1, panel)
-        self.bottom_dimen = Geom:new{ x = panel_x, y = 0, w = panel_w, h = self.screen_h }
+        self.bottom_dimen = Geom:new{ x = panel_x, y = status_h, w = panel_w, h = content_h }
     else
         self.bottom_dimen = self.top_dimen:copy()
     end
@@ -318,9 +383,10 @@ function ReaderQuickMenu:getTabActions()
         self:refresh()
     end
     return {
+        -- 返回箭头：退出应用（不再回到文件管理器）
         back = function()
             self:onClose()
-            self.ui:handleEvent(Event:new("Home"))
+            UIManager:broadcastEvent(Event:new("Exit"))
         end,
         bookmark = function()
             self.ui:handleEvent(Event:new("ToggleBookmark"))
@@ -609,7 +675,8 @@ function ReaderQuickMenu:buildMorePanel()
     }
 end
 
--- 竖屏底部栏：展开的面板（如有）+ 分隔线 + 四个标签
+-- 竖屏底部栏：展开的面板（如有）+ 带指示三角的分隔线 + 四个标签
+-- 三角朝下，水平位置对准当前打开面板对应的标签（进度/排版/更多）
 function ReaderQuickMenu:buildBottomBar()
     local tab_w = math.floor(self.width / 4)
     -- 排版只适用于流式文档（EPUB 等）；PDF/DJVU 等固定版式禁用
@@ -624,6 +691,7 @@ function ReaderQuickMenu:buildBottomBar()
         }
     end
     local actions = self:getTabActions()
+    -- 标签顺序：章节、进度、排版、更多（与 caret 水平位置对应）
     local tabs = HorizontalGroup:new{
         align = "top",
         tab("quickmenu.chapters", _("Chapters"), actions.chapters),
@@ -645,11 +713,24 @@ function ReaderQuickMenu:buildBottomBar()
     elseif panel then
         table.insert(group, panel)
     end
-    table.insert(group, LineWidget:new{
-        dimen = Geom:new{ w = self.width, h = Size.line.thick },
-        background = Blitbuffer.COLOR_BLACK,
-    })
-    table.insert(group, tabs)
+    -- 分隔线与标签叠在一起画，后画分隔线，使朝下三角盖在对应标签上方
+    local caret_tab = ({ progress = 2, typeset = 3, more = 4 })[self.bottom_mode]
+    local line_h = Size.line.thick
+    local tabs_h = tabs:getSize().h
+    local tabs_block = OverlapGroup:new{
+        dimen = Geom:new{ w = self.width, h = line_h + tabs_h },
+        VerticalGroup:new{
+            align = "left",
+            VerticalSpan:new{ width = line_h },
+            tabs,
+        },
+        CaretLine:new{
+            width = self.width,
+            caret_x = caret_tab and math.floor((caret_tab - 0.5) * tab_w) or nil,
+            caret_dir = 1, -- 面板在上，三角朝下指向标签
+        },
+    }
+    table.insert(group, tabs_block)
     return FrameContainer:new{
         bordersize = 0,
         padding = 0,
@@ -659,21 +740,24 @@ function ReaderQuickMenu:buildBottomBar()
 end
 
 -- 重建菜单，刷新新旧区域的并集（面板展开/收起时区域大小会变）；
--- 用 "all" 让下层阅读页一起重绘，收起的面板区域会露出正文
+-- 用 "all" 让下层阅读页一起重绘，收起的面板区域会露出正文；
+-- forceRePaint 立刻更新子控件 dimen，避免连续点击落在未布局的旧热区上。
 function ReaderQuickMenu:refresh()
     local old_top, old_bottom = self.top_dimen, self.bottom_dimen
     self:update()
-    local top_region = old_top:combine(self.top_dimen)
-    local bottom_region = old_bottom:combine(self.bottom_dimen)
+    local region = old_top:combine(self.top_dimen):combine(old_bottom):combine(self.bottom_dimen)
     UIManager:setDirty("all", function()
-        return "ui", top_region:combine(bottom_region)
+        return "ui", region
     end)
+    UIManager:forceRePaint()
 end
 
 function ReaderQuickMenu:onShow()
-    UIManager:setDirty(self, function()
+    -- 用 "all" 连同下层阅读页一起刷新，顶部留空处才能透出状态栏
+    UIManager:setDirty("all", function()
         return "ui", self.top_dimen:combine(self.bottom_dimen)
     end)
+    UIManager:forceRePaint()
 end
 
 function ReaderQuickMenu:onCloseWidget()
@@ -694,7 +778,9 @@ end
 
 -- 点击菜单以外的区域（阅读页）时关闭
 function ReaderQuickMenu:onTapClose(arg, ges)
-    if ges.pos:notIntersectWith(self.top_dimen) and ges.pos:notIntersectWith(self.bottom_dimen) then
+    if self.top_dimen and self.bottom_dimen
+        and ges.pos:notIntersectWith(self.top_dimen)
+        and ges.pos:notIntersectWith(self.bottom_dimen) then
         self:onClose()
     end
     return true

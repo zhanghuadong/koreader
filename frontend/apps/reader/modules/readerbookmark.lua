@@ -723,6 +723,7 @@ function ReaderBookmark:onShowBookmark()
     -- 定制：顶部为"章节 | 书签"标签栏，点击"章节"切换到目录列表，长按"书签"打开列表设置
     local nav_title_bar = ReaderNavTitleBar:new{
         active_tab = "bookmark",
+        show_parent = self.bookmark_menu,
         tab_callback = function()
             self.bookmark_menu[1].close_callback()
             self.ui:handleEvent(Event:new("ShowToc"))

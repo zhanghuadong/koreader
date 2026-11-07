@@ -59,7 +59,7 @@ function ReaderTopStatusBar:resetLayout()
     self:update()
 end
 
--- 显示或隐藏；会触发布局更新，避免挡住正文
+-- 显示或隐藏；立刻调整正文边距/可视区，并刷新画面
 function ReaderTopStatusBar:setVisible(visible)
     visible = not not visible
     if self.visible == visible then return end
@@ -67,6 +67,7 @@ function ReaderTopStatusBar:setVisible(visible)
     self.view.top_status_bar_visible = visible
     G_reader_settings:saveSetting("reader_top_status_bar", visible)
 
+    -- 流式文档：把状态栏高度算进上边距后立刻重排
     if self.ui.rolling and self.ui.document and self.ui.document.configurable then
         local c = self.ui.document.configurable
         local margins = {
@@ -77,9 +78,11 @@ function ReaderTopStatusBar:setVisible(visible)
         }
         self.ui:handleEvent(Event:new("SetPageMargins", margins))
     end
+    -- 固定版式等：重算可视区域、书签角标位置
     self.ui:handleEvent(Event:new("ReaderTopStatusBarVisibilityChange"))
     self:rescheduleAutoRefresh()
-    UIManager:setDirty(self.view.dialog, "partial")
+    -- 整页刷新，保证显隐立刻可见（含从选项页返回后）
+    UIManager:setDirty(self.view.dialog, "ui")
 end
 
 function ReaderTopStatusBar:toggle()

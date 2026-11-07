@@ -816,8 +816,10 @@ function ReaderView:recalculate()
         self.visible_area:setSizeTo(self.dimen)
     end
     self.state.offset = Geom:new{x = 0, y = 0}
-    -- 定制：正文从顶部状态栏下方开始绘制
-    local top_h = self.top_status_bar_visible and self.top_status_bar:getHeight() or 0
+    -- 定制：固定版式用 offset 把正文下移避开顶部状态栏；
+    -- 流式文档已在页上边距里计入状态栏高度，不能再偏移，否则横竖屏切换后会叠出空白/裁切。
+    local top_h = (self.ui.paging and self.top_status_bar_visible and self.top_status_bar)
+        and self.top_status_bar:getHeight() or 0
     if self.dimen.h > self.visible_area.h then
         local footer_h = (self.footer_visible and not self.footer.settings.reclaim_height) and self.footer:getHeight() or 0
         self.state.offset.y = top_h + (self.dimen.h - top_h - footer_h - self.visible_area.h) / 2
@@ -938,11 +940,13 @@ function ReaderView:rotate(mode, old_mode)
         -- No layout change, just rotate & repaint with a flash
         UIManager:setDirty(self.dialog, "full")
     else
-        UIManager:setDirty(nil, "full") -- SetDimensions will only request a partial, we want a flash
+        -- 横竖切换：按新逻辑宽高重排，并强制整屏刷新（软件旋转下局部刷新易错位）
         local new_screen_size = Screen:getSize()
         self.ui:handleEvent(Event:new("SetDimensions", new_screen_size))
         self.ui:onScreenResize(new_screen_size)
         self.ui:handleEvent(Event:new("InitScrollPageStates"))
+        UIManager:setDirty(nil, "full")
+        UIManager:forceRePaint()
     end
     Notification:notify(T(_("Rotation mode set to: %1"), optionsutil:getOptionText("SetRotationMode", mode)))
 end
@@ -952,6 +956,16 @@ function ReaderView:onSetDimensions(dimensions)
     self.dimen = dimensions
     -- recalculate view
     self:recalculate()
+    -- 定制：旋转/改尺寸后按最新状态栏与页脚高度重算流式文档边距
+    if self.ui.rolling and self.ui.document and self.ui.document.configurable then
+        local c = self.ui.document.configurable
+        self.ui:handleEvent(Event:new("SetPageMargins", {
+            c.h_page_margins[1],
+            c.t_page_margin,
+            c.h_page_margins[2],
+            c.b_page_margin,
+        }))
+    end
 end
 
 function ReaderView:onRestoreDimensions(dimensions)

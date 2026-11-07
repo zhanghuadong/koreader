@@ -144,9 +144,12 @@ function ReaderOptionsPage:getOptions()
         callback = function()
             self:showChoices(_("Reading orientation"), ORIENTATIONS, Screen:getRotationMode(), function(mode)
                 if mode ~= Screen:getRotationMode() then
-                    -- 本页面不会按新屏幕尺寸重新布局，所以先关闭再旋转
+                    -- 只切换 KOReader UI 方向，不改 Android Activity 屏幕方向。
+                    -- 先关掉选项页/弹窗，下一拍再旋转，避免旧布局画到新方向上。
                     self:onClose()
-                    UIManager:broadcastEvent(Event:new("SetRotationMode", mode))
+                    UIManager:nextTick(function()
+                        UIManager:broadcastEvent(Event:new("SetRotationMode", mode))
+                    end)
                 end
             end)
         end,
@@ -213,7 +216,7 @@ function ReaderOptionsPage:getOptions()
             self:refresh()
         end,
     })
-    -- 定制：隐藏顶部状态栏（时间 + 电量）；打开开关 = 隐藏
+    -- 定制：隐藏顶部状态栏（时间 + 电量）；打开开关 = 隐藏；切换后立即改布局
     local top_bar = ui.view.top_status_bar
     if top_bar then
         table.insert(options, {
@@ -221,7 +224,8 @@ function ReaderOptionsPage:getOptions()
             checked = not top_bar.visible,
             callback = function()
                 top_bar:toggle()
-                self:refresh()
+                -- 本页顶部留白与阅读页状态栏同步显隐，立刻重绘
+                self:refresh("partial")
             end,
         })
     end
@@ -297,7 +301,7 @@ function ReaderOptionsPage:buildStatusRow(width, side, scale)
     return row
 end
 
--- 构建整页：状态行、标题行（左侧返回按钮）、选项行（行间细分隔线，右侧为开关或"当前值 >"）
+-- 构建整页：状态行（与阅读页顶部状态栏同步显隐）、标题行、选项行
 function ReaderOptionsPage:update()
     local width, height = Screen:getWidth(), Screen:getHeight()
     local side = Screen:scaleBySize(18)
@@ -305,8 +309,12 @@ function ReaderOptionsPage:update()
 
     local content = VerticalGroup:new{
         align = "left",
-        self:buildStatusRow(width, side),
     }
+    -- 定制：与阅读页顶部状态栏一致；隐藏时本页也不再画状态行
+    local top_bar = self.ui and self.ui.view and self.ui.view.top_status_bar
+    if top_bar and top_bar.visible then
+        table.insert(content, self:buildStatusRow(width, side))
+    end
 
     local title_h = Screen:scaleBySize(56)
     local title_dimen = Geom:new{ w = width, h = title_h }
@@ -399,10 +407,10 @@ function ReaderOptionsPage:update()
     }
 end
 
--- 选项变化后重建并刷新整页
-function ReaderOptionsPage:refresh()
+-- 选项变化后重建并刷新整页；refresh_mode 可选（显隐状态栏时用 partial）
+function ReaderOptionsPage:refresh(refresh_mode)
     self:update()
-    UIManager:setDirty(self, "ui")
+    UIManager:setDirty(self, refresh_mode or "ui")
 end
 
 function ReaderOptionsPage:onShow()
@@ -410,7 +418,12 @@ function ReaderOptionsPage:onShow()
 end
 
 function ReaderOptionsPage:onCloseWidget()
-    UIManager:setDirty(nil, "ui")
+    -- 关闭后重绘阅读页，使状态栏显隐与边距改动立刻可见
+    if self.ui and self.ui.view and self.ui.view.dialog then
+        UIManager:setDirty(self.ui.view.dialog, "ui")
+    else
+        UIManager:setDirty(nil, "ui")
+    end
 end
 
 function ReaderOptionsPage:onClose()

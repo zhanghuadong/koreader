@@ -917,6 +917,10 @@ function Menu:init()
     }
     -- 定制：导航底栏布局，左侧返回按钮 + 文字，右侧上/下翻页按钮
     if self.nav_footer then
+        -- 底栏文案是章节/书签计数，不要沿用页码搜索的点按输入
+        self.page_info_text.tap_input = nil
+        self.page_info_text.hold_input = nil
+        self.page_info_text.call_hold_input_on_tap = nil
         self.nav_footer_back = Button:new{
             icon = chevron_left,
             callback = function() self:onClose() end,
@@ -1169,7 +1173,10 @@ function Menu:updatePageInfo(select_number)
         else
             self.page_info_text:setText(T(_("Page %1 of %2"), self.page, self.page_num))
         end
-        if self.page_num > 1 then
+        -- 导航底栏计数不可点；普通页码底栏多页时可点开跳页
+        if self.nav_footer then
+            self.page_info_text:disableWithoutDimming()
+        elseif self.page_num > 1 then
             self.page_info_text:enable()
         else
             self.page_info_text:disableWithoutDimming()
@@ -1671,9 +1678,13 @@ function Menu:onClose()
 end
 
 function Menu:onCloseAllMenus()
-    UIManager:close(self)
+    -- 有 close_callback 时由它负责关掉真正入栈的窗口（常为包裹 Menu 的 CenterContainer）。
+    -- 先 UIManager:close(self) 会对未入栈的 Menu 仍发 CloseWidget/setDirty，
+    -- 容器还在栈上时容易造成脏区错乱，看起来像“页面没关”。
     if self.close_callback then
         self.close_callback()
+    else
+        UIManager:close(self)
     end
     return true
 end

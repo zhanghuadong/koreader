@@ -67,26 +67,32 @@ function framebuffer:resize()
     self:_updateWindow()
 end
 
+-- 定制：阅读方向只做 KOReader UI/blitbuffer 旋转，不改 Android Activity 屏幕方向
+-- （设备 Manifest 已是 nosensor；原先 hasNativeRotation 路径会调 setScreenOrientation）
 function framebuffer:getRotationMode()
-    if android.hasNativeRotation() then
-        return android.orientation.get()
-    else
-        return self.cur_rotation_mode
-    end
+    return self.cur_rotation_mode
 end
 
 function framebuffer:setRotationMode(mode)
-    if android.hasNativeRotation() then
-        local key
-        if mode == 0 then key = "PORTRAIT"
-        elseif mode == 1 then key = "LANDSCAPE"
-        elseif mode == 2 then key = "REVERSE_PORTRAIT"
-        elseif mode == 3 then key = "REVERSE_LANDSCAPE" end
-        if key then
-            android.orientation.set(C["ASCREEN_ORIENTATION_" .. key])
+    local old = self.cur_rotation_mode
+    framebuffer.parent.setRotationMode(self, mode)
+    if mode ~= old then
+        -- 旋转后清屏并整窗提交，避免旧方向残影与局部刷新坐标错位
+        self.bb:fill(BB.COLOR_WHITE)
+        if self.viewport then
+            self.full_bb:setRotation(self.bb:getRotation())
+            self.full_bb:fill(BB.COLOR_WHITE)
         end
+        self:_updateWindow()
+    end
+end
+
+-- 软件旋转时，墨水屏局部刷新的物理坐标容易与逻辑区域不一致，一律整屏刷新
+function framebuffer:_refreshEink(mode, delay, x, y, w, h)
+    if self.cur_rotation_mode ~= self.DEVICE_ROTATED_UPRIGHT then
+        self:_updateFull()
     else
-        framebuffer.parent.setRotationMode(self, mode)
+        self:_updatePartial(mode, delay, x, y, w, h)
     end
 end
 
@@ -155,35 +161,35 @@ end
 function framebuffer:refreshPartialImp(x, y, w, h)
     self:_updateWindow()
     if has_eink_full_support then
-        self:_updatePartial(partial, delay_page, x, y, w, h)
+        self:_refreshEink(partial, delay_page, x, y, w, h)
     end
 end
 
 function framebuffer:refreshFlashPartialImp(x, y, w, h)
     self:_updateWindow()
     if has_eink_full_support then
-        self:_updatePartial(full, delay_page, x, y, w, h)
+        self:_refreshEink(full, delay_page, x, y, w, h)
     end
 end
 
 function framebuffer:refreshUIImp(x, y, w, h)
     self:_updateWindow()
     if has_eink_full_support then
-        self:_updatePartial(partial_ui, delay_ui, x, y, w, h)
+        self:_refreshEink(partial_ui, delay_ui, x, y, w, h)
     end
 end
 
 function framebuffer:refreshFlashUIImp(x, y, w, h)
     self:_updateWindow()
     if has_eink_full_support then
-        self:_updatePartial(full_ui, delay_ui, x, y, w, h)
+        self:_refreshEink(full_ui, delay_ui, x, y, w, h)
     end
 end
 
 function framebuffer:refreshFastImp(x, y, w, h)
     self:_updateWindow()
     if has_eink_full_support then
-        self:_updatePartial(fast, delay_fast, x, y, w, h)
+        self:_refreshEink(fast, delay_fast, x, y, w, h)
     end
 end
 
