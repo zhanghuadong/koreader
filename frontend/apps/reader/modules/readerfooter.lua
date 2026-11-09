@@ -17,6 +17,7 @@ local LineWidget = require("ui/widget/linewidget")
 local MultiInputDialog = require("ui/widget/multiinputdialog")
 local Presets = require("ui/presets")
 local ProgressWidget = require("ui/widget/progresswidget")
+local ReaderStatusBar = require("ui/widget/readerstatusbar")
 local RightContainer = require("ui/widget/container/rightcontainer")
 local Size = require("ui/size")
 local SpinWidget = require("ui/widget/spinwidget")
@@ -813,8 +814,8 @@ function ReaderFooter:updateFooterContainer()
         table.insert(self.vertical_frame, self.footer_container)
     end
     self.footer_content = FrameContainer:new{
-        -- 定制：自动翻页运行时用自动翻页状态栏替换原状态栏内容
-        self.autoturn_bar_sec and self:genAutoTurnBar() or self.vertical_frame,
+        -- 定制：默认显示「时间 | 章节 | 进度%」状态栏；自动翻页时换成 AutoTurnBar
+        self.autoturn_bar_sec and self:genAutoTurnBar() or self:genReaderStatusBar(),
         background = Blitbuffer.COLOR_WHITE,
         bordersize = 0,
         padding = 0,
@@ -885,8 +886,9 @@ function ReaderFooter:rescheduleFooterAutoRefreshIfNeeded()
             end
         end
     end
-    if self.autoturn_bar_sec then
-        schedule = true -- 定制：自动翻页状态栏显示时间，需要每分钟刷新
+    -- 定制：自定义底栏和自动翻页底栏都显示时间，需要每分钟刷新
+    if self.autoturn_bar_sec or not self.settings.disabled then
+        schedule = true
     end
     if schedule then
         UIManager:scheduleIn(61 - tonumber(os.date("%S")), self.autoRefreshFooter)
@@ -2310,107 +2312,30 @@ function ReaderFooter:_updateFooterText(force_repaint, full_repaint)
         return
     end
 
-    -- 定制：重新生成自动翻页状态栏，更新时间和进度
-    if self.autoturn_bar_sec then
+    -- 定制：刷新自定义底栏（或自动翻页底栏）的时间、章节与进度，不再走原进度条/文字布局
+    if self.footer_content and self.footer_content[1] then
         self.footer_content[1]:free()
-        self.footer_content[1] = self:genAutoTurnBar()
+        self.footer_content[1] = self.autoturn_bar_sec and self:genAutoTurnBar() or self:genReaderStatusBar()
     end
 
-    local text = self:genFooterText() or ""
-    self.footer_text:setText(text)
-
-    if self.settings.disable_progress_bar then
-        if self.has_no_mode or text == "" then
-            self.text_width = 0
-            self.footer_text.height = 0
-        else
-            -- No progress bar, we're only constrained to fit inside self.footer_container
-            self.footer_text:setMaxWidth(math.floor(self._saved_screen_width - 2 * self.horizontal_margin))
-            self.text_width = self.footer_text:getSize().w
-            self.footer_text.height = self.footer_text:getSize().h
-        end
-        self.progress_bar.height = 0
-        self.progress_bar.width = 0
-    elseif self.settings.progress_bar_position ~= "alongside" then
-        local margins_width = 2 * Screen:scaleBySize(self.settings.progress_margin_width)
-        if self.has_no_mode or text == "" then
-            self.text_width = 0
-            self.footer_text.height = 0
-        else
-            -- With a progress bar above or below us, we want to align ourselves to the bar's margins... iff text is centered.
-            if self.settings.align == "center" then
-                self.footer_text:setMaxWidth(math.floor(self._saved_screen_width - margins_width))
-            else
-                -- Otherwise, we have to constrain ourselves to the container, or weird shit happens.
-                self.footer_text:setMaxWidth(math.floor(self._saved_screen_width - 2 * self.horizontal_margin))
-            end
-            self.text_width = self.footer_text:getSize().w
-            self.footer_text.height = self.footer_text:getSize().h
-        end
-        self.progress_bar.width = math.floor(self._saved_screen_width - margins_width)
-    else
-        local margins_width = 2 * Screen:scaleBySize(self.settings.progress_margin_width)
-        if self.has_no_mode or text == "" then
-            self.text_width = 0
-            self.footer_text.height = 0
-        else
-            if self.settings.progress_bar_lock_width then -- Alongside text items, with fixed width setting.
-                local bar_width = (1/100 * self.settings.progress_bar_min_width_pct * self._saved_screen_width)
-                self.footer_text:setMaxWidth(math.floor(self._saved_screen_width - bar_width))
-                self.text_width = self._saved_screen_width - bar_width + self.horizontal_margin
-            else
-                -- Alongside text items (progress bar uses remaining space).
-                local text_max_available_ratio = (100 - self.settings.progress_bar_min_width_pct) * (1/100)
-                self.footer_text:setMaxWidth(math.floor(text_max_available_ratio * self._saved_screen_width - margins_width - self.horizontal_margin))
-                -- Add some spacing between the text and the bar
-                self.text_width = self.footer_text:getSize().w + self.horizontal_margin
-            end
-            self.footer_text.height = self.footer_text:getSize().h
-        end
-        self.progress_bar.width = math.floor(self._saved_screen_width - margins_width - self.text_width)
-    end
-
-    if self.separator_line then
-        self.separator_line.dimen.w = self._saved_screen_width - 2 * self.horizontal_margin
-    end
-    self.text_container.dimen.w = self.text_width
-    self.horizontal_group:resetLayout()
-    -- NOTE: This is essentially preventing us from truly using "fast" for panning,
-    --       since it'll get coalesced in the "fast" panning update, upgrading it to "ui".
-    -- NOTE: That's assuming using "fast" for pans was a good idea, which, it turned out, not so much ;).
-    -- NOTE: We skip repaints on page turns/pos update, as that's redundant (and slow).
     if force_repaint then
-        -- If there was a visibility change, notify ReaderView
         if self.visibility_change then
             self.visibility_change = nil
             self.ui:handleEvent(Event:new("ReaderFooterVisibilityChange"))
         end
 
-        -- NOTE: Getting the dimensions of the widget is impossible without having drawn it first,
-        --       so, we'll fudge it if need be...
-        --       i.e., when it's no longer visible, because there's nothing to draw ;).
         local refresh_dim = self.footer_content.dimen
-        -- No more content...
         if not self.view.footer_visible and not refresh_dim then
-            -- So, instead, rely on self:getHeight to compute self.footer_content's height early...
             refresh_dim = self.dimen
             refresh_dim.h = self:getHeight()
             refresh_dim.y = self._saved_screen_height - refresh_dim.h
         end
-        -- If we're making the footer visible (or it already is), we don't need to repaint ReaderUI behind it
         if self.view.footer_visible and not full_repaint then
-            -- Unfortunately, it's not a modal (we never show() it), so it's not in the window stack,
-            -- instead, it's baked inside ReaderUI, so it gets slightly trickier...
-            -- NOTE: self.view.footer -> self ;).
-
-            -- c.f., ReaderView:paintTo()
             UIManager:widgetRepaint(self.view.footer, 0, 0)
-            -- We've painted it first to ensure self.footer_content.dimen is sane
             UIManager:setDirty(nil, function()
                 return self.view.currently_scrolling and "fast" or "ui", self.footer_content.dimen
             end)
         else
-            -- If the footer is invisible or might be hidden behind another widget, we need to repaint the full ReaderUI stack.
             UIManager:setDirty(self.view.dialog, function()
                 return self.view.currently_scrolling and "fast" or "ui", refresh_dim
             end)
@@ -2698,12 +2623,31 @@ function ReaderFooter:refreshFooter(refresh, signal)
     end
 end
 
+-- 定制：设计稿时间格式（12 小时制 + AM/PM，不受界面语言影响）
+function ReaderFooter:getStatusBarClock()
+    return os.date("%I:%M %p")
+end
+
+-- 定制：生成阅读底栏（时间、当前章节、全书进度）
+function ReaderFooter:genReaderStatusBar()
+    local chapter = ""
+    if self.ui and self.ui.toc and self.pageno then
+        chapter = self.ui.toc:getTocTitleByPage(self.pageno) or ""
+    end
+    return ReaderStatusBar:new{
+        width = self._saved_screen_width or Screen:getWidth(),
+        clock = self:getStatusBarClock(),
+        chapter = chapter,
+        percent = self.percent_finished,
+    }
+end
+
 -- 定制：生成自动翻页状态栏（时间、翻页间隔、阅读进度）
 function ReaderFooter:genAutoTurnBar()
     return AutoTurnBar:new{
         width = self._saved_screen_width or Screen:getWidth(),
         seconds = self.autoturn_bar_sec,
-        clock = datetime.secondsToHour(os.time(), G_reader_settings:isTrue("twelve_hour_clock")),
+        clock = self:getStatusBarClock(),
         percent = self.percent_finished,
     }
 end
