@@ -2,7 +2,7 @@
 全屏"阅读选项"页，从阅读器快捷菜单的 更多 > 高级 打开。
 
 顶部为时间 + 电量状态行和带返回按钮的标题，下面是选项列表：
-阅读方向、对齐方式（单选弹窗），断字、抗锯齿、EPUB 图片、灰度图片、隐藏顶部状态栏（开关）。
+阅读方向、对齐方式（单选弹窗），断字、抗锯齿、EPUB 图片、灰度图片、夜间模式、隐藏顶部状态栏（开关）。
 ]]
 
 local Blitbuffer = require("ffi/blitbuffer")
@@ -213,6 +213,15 @@ function ReaderOptionsPage:getOptions()
             G_reader_settings:saveSetting("color_rendering", color)
             CanvasContext:setColorRenderingEnabled(color)
             UIManager:broadcastEvent(Event:new("ColorRenderingUpdate"))
+            self:refresh()
+        end,
+    })
+    -- 定制：暗黑/浅色（复用全局夜间模式反色）；开 = 暗黑，关 = 浅色
+    table.insert(options, {
+        text = _("Night mode"),
+        checked = G_reader_settings:isTrue("night_mode"),
+        callback = function()
+            UIManager:broadcastEvent(Event:new("ToggleNightMode"))
             self:refresh()
         end,
     })
